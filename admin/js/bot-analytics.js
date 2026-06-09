@@ -473,13 +473,33 @@
 			}
 
 			var cacheClass = 'ta-cache-' + access.cache_status.toLowerCase();
+			var cacheLabels = {
+				'PRE_GENERATED': '⚡ Instant',
+				'HIT':           '⚡ Cached',
+				'MISS':          '🕐 Fresh',
+				'FAILED':        '⚠ Failed'
+			};
+			var cacheTips = {
+				'PRE_GENERATED': 'Pre-generated — served from a saved copy (<1ms). Permanent.',
+				'HIT':           'Served from cache (1–5ms). Renews every 24 hours.',
+				'MISS':          'Generated fresh on this request (10–50ms). Saved to cache after.',
+				'FAILED':        'Generation failed — post may be deleted. Check System Health.'
+			};
+			var cacheLabel = cacheLabels[access.cache_status] || access.cache_status;
+			var cacheTip   = cacheTips[access.cache_status]  || access.cache_status;
 			var responseTime = access.response_time ? access.response_time + 'ms' : '-';
+
+			// TYPE badge: MD for markdown (.md), TXT for text (.txt).
+			var ct = (access.content_type || 'markdown').toLowerCase();
+			var typeLabel = ct === 'text' ? 'TXT' : (ct === 'markdown' ? 'MD' : ct.toUpperCase());
+			var typeClass = 'ta-type-' + (ct === 'text' ? 'txt' : 'md');
 
 			var html = '<tr data-access-id="' + access.id + '">' +
 				'<td class="ta-feed-time" title="' + this.escapeHtml(access.timestamp) + '">' + timeText + '</td>' +
 				'<td class="ta-feed-url"><a href="' + this.escapeHtml(access.url) + '" target="_blank" title="' + this.escapeHtml(access.url) + '">' + this.escapeHtml(urlDisplay) + '</a></td>' +
 				'<td class="ta-feed-bot"><span class="ta-bot-badge">' + this.escapeHtml(access.bot_name) + '</span></td>' +
-				'<td class="ta-feed-cache"><span class="ta-cache-badge ' + cacheClass + '">' + this.escapeHtml(access.cache_status) + '</span></td>' +
+				'<td class="ta-feed-type"><span class="ta-type-badge ' + typeClass + '">' + typeLabel + '</span></td>' +
+				'<td class="ta-feed-cache"><span class="ta-cache-badge ' + cacheClass + '" title="' + this.escapeHtml(cacheTip) + '">' + this.escapeHtml(cacheLabel) + '</span></td>' +
 				'<td class="ta-feed-response">' + responseTime + '</td>' +
 				'</tr>';
 

@@ -73,10 +73,20 @@ class TA_Discovery {
             $markdown_url .= $path . '.md';
         }
 
-        // Output the link tag
+        // Derive the .txt URL (same content, plain-text type) from the .md URL.
+        // Some AI crawlers look for .txt instead of .md — advertise both.
+        $text_url = preg_replace('/\.md$/', '.txt', $markdown_url);
+
+        // Output the markdown alternate link tag.
         printf(
             '<link rel="alternate" type="text/markdown" href="%s" title="Markdown version" />' . "\n",
             esc_url($markdown_url)
+        );
+
+        // Output the text alternate link tag.
+        printf(
+            '<link rel="alternate" type="text/plain" href="%s" title="Text version" />' . "\n",
+            esc_url($text_url)
         );
     }
 }

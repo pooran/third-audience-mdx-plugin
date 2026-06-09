@@ -163,7 +163,7 @@ class TA_Local_Converter {
 
 			// Add title
 			if ( $options['include_title'] ) {
-				$markdown .= '# ' . $this->security->sanitize_text( html_entity_decode( $post->post_title, ENT_QUOTES, 'UTF-8' ) ) . "\n\n";
+				$markdown .= '# ' . $this->security->sanitize_text( html_entity_decode( apply_filters( 'the_title', $post->post_title, $post->ID ), ENT_QUOTES, 'UTF-8' ) ) . "\n\n";
 			}
 
 			// Add post meta
@@ -231,8 +231,8 @@ class TA_Local_Converter {
 	 */
 	private function generate_frontmatter( $post ) {
 		$frontmatter = "---\n";
-		$frontmatter .= 'title: "' . addslashes( html_entity_decode( $post->post_title, ENT_QUOTES, 'UTF-8' ) ) . "\"\n";
-		$frontmatter .= 'url: "' . get_permalink( $post->ID ) . "\"\n";
+		$frontmatter .= 'title: "' . addslashes( html_entity_decode( apply_filters( 'the_title', $post->post_title, $post->ID ), ENT_QUOTES, 'UTF-8' ) ) . "\"\n";
+		$frontmatter .= 'url: "' . ( function_exists( 'ta_frontend_permalink' ) ? ta_frontend_permalink( $post->ID ) : get_permalink( $post->ID ) ) . "\"\n";
 		$frontmatter .= 'date: "' . get_the_date( 'c', $post->ID ) . "\"\n";
 		$frontmatter .= 'modified: "' . get_the_modified_date( 'c', $post->ID ) . "\"\n";
 		// Author as object with name and url (matches Dries' format).
@@ -534,7 +534,7 @@ class TA_Local_Converter {
 				$query->the_post();
 				$related[] = array(
 					'title' => get_the_title(),
-					'url'   => get_permalink(),
+					'url'   => function_exists( 'ta_frontend_permalink' ) ? ta_frontend_permalink( get_the_ID() ) : get_permalink(),
 				);
 			}
 			wp_reset_postdata();
@@ -790,7 +790,8 @@ class TA_Local_Converter {
 	 */
 	private function generate_footer( $post, $cache_status = null ) {
 		$footer = "\n\n---\n\n";
-		$footer .= '_View the original post at: [' . get_permalink( $post->ID ) . '](' . get_permalink( $post->ID ) . ')_  ' . "\n";
+		$original_url = function_exists( 'ta_frontend_permalink' ) ? ta_frontend_permalink( $post->ID ) : get_permalink( $post->ID );
+		$footer .= '_View the original post at: [' . $original_url . '](' . $original_url . ')_  ' . "\n";
 		$footer .= '_Served as markdown by [Third Audience](https://github.com/third-audience) v' . TA_VERSION . '_  ' . "\n";
 		$footer .= '_Generated: ' . gmdate( 'Y-m-d H:i:s' ) . ' UTC_  ' . "\n";
 

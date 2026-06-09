@@ -23,6 +23,16 @@ if ( ! defined( 'ABSPATH' ) ) {
 class TA_URL_Router {
 
 	/**
+	 * Requested output format for the current request: 'md' or 'txt'.
+	 *
+	 * Both serve identical content; only the Content-Type header and the
+	 * tracked content_type differ ('markdown' vs 'text').
+	 *
+	 * @var string
+	 */
+	private $request_format = 'md';
+
+	/**
 	 * Cache Manager instance.
 	 *
 	 * @var TA_Cache_Manager
@@ -101,9 +111,21 @@ class TA_URL_Router {
 			'top'
 		);
 
+		// Match any URL ending in .txt — same handler, served as text/plain for
+		// AI crawlers that look for .txt instead of .md (maximum compatibility).
+		// The negative lookahead protects well-known reserved files (robots.txt,
+		// ads.txt, security.txt, llms.txt, /.well-known/*) so WordPress keeps
+		// serving those normally instead of 404-ing them through our handler.
+		add_rewrite_rule(
+			'(?!(?:robots|ads|humans|security|llms|llms-full)\.txt$|\.well-known/)(.+)\.txt$',
+			'index.php?ta_markdown=1&ta_format=txt&ta_path=$matches[1]',
+			'top'
+		);
+
 		// Register query vars.
 		add_rewrite_tag( '%ta_markdown%', '1' );
 		add_rewrite_tag( '%ta_path%', '([^&]+)' );
+		add_rewrite_tag( '%ta_format%', '([^&]+)' );
 	}
 
 	/**
@@ -124,6 +146,10 @@ class TA_URL_Router {
 
 		// Sanitize the path.
 		$path = $this->security->sanitize_text( $path );
+
+		// Determine the output format. '.txt' requests serve the same content
+		// as '.md' but with a text/plain header and a 'text' tracked type.
+		$this->request_format = ( 'txt' === get_query_var( 'ta_format' ) ) ? 'txt' : 'md';
 
 		// Check if this is a homepage pattern request
 		$homepage_pattern = get_option( 'ta_homepage_md_pattern', 'index.md' );
@@ -254,6 +280,10 @@ class TA_URL_Router {
 				'url'     => $original_url,
 				'post_id' => $post_id,
 			) );
+
+			// Count this as a cache hit so the Hit Rate reflects pre-generated
+			// serves (they bypass the tiered get() path otherwise).
+			$this->cache_manager->record_pregenerated_hit();
 
 			// Track bot visit.
 			$this->track_bot_visit( $original_url, $post, 'PRE_GENERATED', $request_start_time, strlen( $pre_generated ) );
@@ -388,7 +418,9 @@ class TA_URL_Router {
 			'response_time'  => $response_time,
 			'response_size'  => $size,
 			'referer'        => $referer,
-			'content_type'   => 'markdown', // Mark as markdown request.
+			// 'text' for .txt requests, 'markdown' for .md — lets the dashboard
+			// show the TYPE (MD/TXT) and keeps them distinguishable.
+			'content_type'   => ( 'txt' === $this->request_format ) ? 'text' : 'markdown',
 		) );
 
 		// Fire action to prevent duplicate tracking from maybe_track_bot_crawl().
@@ -460,7 +492,9 @@ class TA_URL_Router {
 		// The markdown is generated from known sources (our conversion worker).
 
 		status_header( 200 );
-		header( 'Content-Type: text/markdown; charset=utf-8' );
+		// .txt requests get text/plain; .md (default) gets text/markdown.
+		$mime = ( 'txt' === $this->request_format ) ? 'text/plain' : 'text/markdown';
+		header( 'Content-Type: ' . $mime . '; charset=utf-8' );
 		header( 'Cache-Control: public, max-age=3600' );
 		header( 'X-Cache-Status: ' . $cache_status );
 		header( 'X-Powered-By: Third Audience ' . TA_VERSION );

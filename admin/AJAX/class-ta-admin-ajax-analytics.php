@@ -891,12 +891,19 @@ class TA_Admin_AJAX_Analytics {
 
 		foreach ( $bot_stats as $bot ) {
 			$visit_count = (int) ( $bot['count'] ?? $bot['visit_count'] ?? 0 );
-			$labels[]    = $bot['bot_type'];
+			// All citation clicks share bot_type 'AI_Citation' but have distinct
+			// bot_name (platform). Labelling by bot_type made "AI_Citation" appear
+			// multiple times; use the platform name for citations so each row is
+			// unique and meaningful (crawls still use bot_type).
+			$label       = ( 'AI_Citation' === $bot['bot_type'] && ! empty( $bot['bot_name'] ) )
+				? $bot['bot_name']
+				: $bot['bot_type'];
+			$labels[]    = $label;
 			$values[]    = $visit_count;
 			$pct         = $total > 0 ? round( ( $visit_count / $total ) * 100, 1 ) . '%' : '0%';
 			$pcts[]      = $pct;
 			$rows[]      = array(
-				'<span class="ta-bot-name">' . esc_html( $bot['bot_type'] ) . '</span>',
+				'<span class="ta-bot-name">' . esc_html( $label ) . '</span>',
 				'<strong>' . number_format( $visit_count ) . '</strong>',
 				$pct,
 				esc_html( $bot['last_visit_human'] ?? '-' ),
@@ -940,15 +947,16 @@ class TA_Admin_AJAX_Analytics {
 		$rows   = array();
 
 		foreach ( array_slice( $top_pages, 0, 10 ) as $page ) {
-			$title    = $page['page_title'] ?: $page['page_url'];
+			$title    = ta_page_display_title( $page['page_title'], $page['page_url'] );
 			$labels[] = strlen( $title ) > 25 ? substr( $title, 0, 25 ) . '...' : $title;
 			$values[] = (int) $page['visit_count'];
 		}
 
 		foreach ( $top_pages as $page ) {
-			$title  = $page['page_title'] ?: $page['page_url'];
+			$title = ta_page_display_title( $page['page_title'], $page['page_url'] );
+			$href  = ta_citation_public_url( $page['page_url'] );
 			$rows[] = array(
-				'<a href="' . esc_url( $page['page_url'] ) . '" target="_blank">' . esc_html( $title ) . '</a>',
+				'<a href="' . esc_url( $href ) . '" target="_blank">' . esc_html( $title ) . '</a>',
 				'<strong>' . number_format( $page['visit_count'] ) . '</strong>',
 				number_format( $page['unique_bots'] ),
 			);

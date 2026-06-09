@@ -42,7 +42,17 @@ $visits_time   = $analytics->get_visits_over_time( $filters, $time_period, 30 );
 $current_page  = isset( $_GET['paged'] ) ? max( 1, absint( $_GET['paged'] ) ) : 1;
 $per_page      = 30;
 $offset        = ( $current_page - 1 ) * $per_page;
-$recent_visits = $analytics->get_recent_visits( $filters, $per_page, $offset );
+// Bot Activity feed shows bot crawls only — human AI-referral clicks
+// (citation_click) live on the LLM Traffic page, not here. Plain HTML page
+// crawls are excluded too, so the feed shows only .md / .txt requests.
+$feed_filters  = array_merge(
+	$filters,
+	array(
+		'exclude_traffic_type' => 'citation_click',
+		'exclude_content_type' => 'html',
+	)
+);
+$recent_visits = $analytics->get_recent_visits( $feed_filters, $per_page, $offset );
 
 // Session Analytics (v2.6.0).
 $session_stats     = $analytics->get_session_analytics();
@@ -234,9 +244,9 @@ $recent_violations = $rate_limiter->get_rate_limit_violations( 10 );
 					<div class="ta-filter-item">
 						<label><?php esc_html_e( 'Content Type', 'third-audience' ); ?></label>
 						<select name="content_type">
-							<option value=""><?php esc_html_e( 'All Content', 'third-audience' ); ?></option>
-							<option value="html" <?php selected( $filters['content_type'] ?? '', 'html' ); ?>><?php esc_html_e( 'HTML Pages', 'third-audience' ); ?></option>
+							<option value=""><?php esc_html_e( 'All (.md + .txt)', 'third-audience' ); ?></option>
 							<option value="markdown" <?php selected( $filters['content_type'] ?? '', 'markdown' ); ?>><?php esc_html_e( 'Markdown (.md)', 'third-audience' ); ?></option>
+							<option value="text" <?php selected( $filters['content_type'] ?? '', 'text' ); ?>><?php esc_html_e( 'Text (.txt)', 'third-audience' ); ?></option>
 						</select>
 					</div>
 					<div class="ta-filter-item">
@@ -293,7 +303,11 @@ $recent_violations = $rate_limiter->get_rate_limit_violations( 10 );
 								$bot_priority = $analytics->get_bot_priority( $bot['bot_type'], 'medium' );
 								$color = $priority_colors[ $bot_priority ] ?? '#999';
 								?>
-								<tr>
+								<tr class="ta-bot-dist-row"
+									style="cursor: pointer;"
+									data-bot-type="<?php echo esc_attr( $bot['bot_type'] ); ?>"
+									data-bot-name="<?php echo esc_attr( $bot['bot_name'] ); ?>"
+									title="<?php esc_attr_e( 'Click to see detailed breakdown', 'third-audience' ); ?>">
 									<td>
 										<span class="ta-bot-name">
 											<span class="ta-bot-dot" style="background: <?php echo esc_attr( $color ); ?>"></span>
@@ -340,8 +354,8 @@ $recent_violations = $rate_limiter->get_rate_limit_violations( 10 );
 							<?php foreach ( array_slice( $top_pages, 0, 10 ) as $page ) : ?>
 								<tr>
 									<td>
-										<a href="<?php echo esc_url( $page['url'] ); ?>" target="_blank" class="ta-page-link" title="<?php esc_attr_e( 'View page', 'third-audience' ); ?>">
-											<?php echo esc_html( wp_trim_words( $page['post_title'] ?? $page['url'], 8 ) ); ?>
+										<a href="<?php echo esc_url( ta_citation_public_url( $page['url'] ) ); ?>" target="_blank" class="ta-page-link" title="<?php esc_attr_e( 'View page', 'third-audience' ); ?>">
+											<?php echo esc_html( wp_trim_words( ta_page_display_title( $page['post_title'] ?? '', $page['url'] ), 8 ) ); ?>
 										</a>
 										<a href="<?php echo esc_url( untrailingslashit( $page['url'] ) . '.md' ); ?>" target="_blank" class="ta-md-link" title="<?php esc_attr_e( 'View as Markdown (what bots see)', 'third-audience' ); ?>">
 											<span class="dashicons dashicons-media-text"></span>
@@ -361,49 +375,94 @@ $recent_violations = $rate_limiter->get_rate_limit_violations( 10 );
 
 	<!-- Session Activity Cards -->
 	<div class="ta-cards-container">
-		<!-- Top Bots by Session Activity -->
+		<!-- How Deeply Bots Read Your Content (was: Top Bots by Session Activity) -->
+		<style>
+			.ta-engagement-badge {
+				display: inline-flex;
+				align-items: center;
+				gap: 4px;
+				padding: 3px 8px;
+				border-radius: 10px;
+				font-size: 11px;
+				font-weight: 600;
+				white-space: nowrap;
+				position: relative;
+				cursor: default;
+			}
+			.ta-engagement-badge.deep  { background: #dcfce7; color: #166534; }
+			.ta-engagement-badge.normal { background: #fef9c3; color: #854d0e; }
+			.ta-engagement-badge.shallow { background: #fee2e2; color: #991b1b; }
+
+			/* JS tooltip — see #ta-engagement-tooltip below */
+		</style>
 		<div class="ta-card">
 			<div class="ta-card-header">
-				<h2><?php esc_html_e( 'Top Bots by Session Activity', 'third-audience' ); ?></h2>
+				<h2><?php esc_html_e( 'How Deeply Bots Read Your Content', 'third-audience' ); ?></h2>
 			</div>
 			<div class="ta-card-body">
+				<p style="margin: 0 0 14px 0; font-size: 13px; color: #646970;">
+					<?php esc_html_e( 'Higher pages per visit = bot is indexing your content more thoroughly. More depth means better chance of being cited.', 'third-audience' ); ?>
+				</p>
 				<?php if ( ! empty( $top_bots_session ) ) : ?>
 					<table class="ta-table ta-table-compact">
 						<thead>
 							<tr>
 								<th><?php esc_html_e( 'Bot', 'third-audience' ); ?></th>
-								<th><?php esc_html_e( 'Pages/Session', 'third-audience' ); ?></th>
-								<th><?php esc_html_e( 'Duration', 'third-audience' ); ?></th>
+								<th><?php esc_html_e( 'Pages per Visit', 'third-audience' ); ?></th>
+								<th><?php esc_html_e( 'Time Spent', 'third-audience' ); ?></th>
 								<th><?php esc_html_e( 'Total Visits', 'third-audience' ); ?></th>
+								<th><?php esc_html_e( 'Engagement', 'third-audience' ); ?></th>
 							</tr>
 						</thead>
 						<tbody>
-							<?php foreach ( $top_bots_session as $bot ) : ?>
+							<?php foreach ( $top_bots_session as $bot ) :
+								$pps           = (float) $bot['pages_per_session_avg'];
+								$duration_mins = round( $bot['session_duration_avg'] / 60, 1 );
+
+								if ( $pps >= 5 ) {
+									$badge_class = 'deep';
+									$badge_icon  = '🟢';
+									$badge_label = __( 'Deep Crawl', 'third-audience' );
+									$badge_tip   = __( 'Deep Crawl — This bot reads 5+ pages per visit. It is thoroughly indexing your content across multiple topics. High engagement increases the chance of being cited by this AI platform.', 'third-audience' );
+								} elseif ( $pps >= 2 ) {
+									$badge_class = 'normal';
+									$badge_icon  = '🟡';
+									$badge_label = __( 'Normal', 'third-audience' );
+									$badge_tip   = __( 'Normal Crawl — This bot reads 2–5 pages per visit. Standard indexing depth. Your content is being discovered but not exhaustively.', 'third-audience' );
+								} else {
+									$badge_class = 'shallow';
+									$badge_icon  = '🔴';
+									$badge_label = __( 'Shallow', 'third-audience' );
+									$badge_tip   = __( 'Shallow Crawl — This bot reads fewer than 2 pages per visit. Brief visits only. Consider improving internal linking to encourage deeper crawling.', 'third-audience' );
+								}
+							?>
 								<tr>
 									<td>
 										<span class="ta-bot-name">
 											<?php echo esc_html( $bot['bot_type'] ); ?>
 										</span>
-										<div style="font-size: 11px; color: #646970; margin-top: 2px;">
-											<?php echo esc_html( wp_trim_words( $bot['user_agent'], 8 ) ); ?>
-										</div>
 									</td>
 									<td>
-										<strong><?php echo number_format( $bot['pages_per_session_avg'], 1 ); ?></strong> pages
+										<strong><?php echo number_format( $pps, 1 ); ?></strong>
+										<span style="color: #646970; font-size: 11px;"> pages</span>
 									</td>
 									<td>
-										<?php
-										$duration_mins = round( $bot['session_duration_avg'] / 60, 1 );
-										echo number_format( $duration_mins, 1 );
-										?> min
+										<strong><?php echo number_format( $duration_mins, 1 ); ?></strong>
+										<span style="color: #646970; font-size: 11px;"> min</span>
 									</td>
 									<td><?php echo number_format( $bot['visit_count'] ); ?></td>
+									<td>
+										<span class="ta-engagement-badge <?php echo esc_attr( $badge_class ); ?>"
+											data-tip="<?php echo esc_attr( $badge_tip ); ?>">
+											<?php echo $badge_icon; ?> <?php echo esc_html( $badge_label ); ?>
+										</span>
+									</td>
 								</tr>
 							<?php endforeach; ?>
 						</tbody>
 					</table>
 				<?php else : ?>
-					<p class="ta-no-data"><?php esc_html_e( 'No session data yet. Data appears after multiple visits from same bot+IP.', 'third-audience' ); ?></p>
+					<p class="ta-no-data"><?php esc_html_e( 'No data yet. Appears after multiple visits from the same bot.', 'third-audience' ); ?></p>
 				<?php endif; ?>
 			</div>
 		</div>
@@ -607,8 +666,8 @@ $recent_violations = $rate_limiter->get_rate_limit_violations( 10 );
 							?>
 							<tr>
 								<td>
-									<a href="<?php echo esc_url( $page['url'] ); ?>" target="_blank" class="ta-page-link">
-										<?php echo esc_html( wp_trim_words( $page['post_title'] ?? $page['url'], 8 ) ); ?>
+									<a href="<?php echo esc_url( ta_citation_public_url( $page['url'] ) ); ?>" target="_blank" class="ta-page-link">
+										<?php echo esc_html( wp_trim_words( ta_page_display_title( $page['post_title'] ?? '', $page['url'] ), 8 ) ); ?>
 									</a>
 								</td>
 								<td style="text-align: right;">
@@ -806,7 +865,7 @@ $recent_violations = $rate_limiter->get_rate_limit_violations( 10 );
 		<div class="ta-card-header">
 			<h2>
 				<span class="ta-live-indicator"></span>
-				<?php esc_html_e( 'Live Activity Feed', 'third-audience' ); ?>
+				<?php esc_html_e( 'Bot Crawl Feed', 'third-audience' ); ?>
 			</h2>
 			<div class="ta-card-actions">
 				<button type="button" class="button button-small ta-export-btn" data-export="live-activity" title="<?php esc_attr_e( 'Export to CSV', 'third-audience' ); ?>">
@@ -825,7 +884,6 @@ $recent_violations = $rate_limiter->get_rate_limit_violations( 10 );
 						<th><?php esc_html_e( 'Page', 'third-audience' ); ?></th>
 						<th><?php esc_html_e( 'Type', 'third-audience' ); ?></th>
 						<th><?php esc_html_e( 'Location', 'third-audience' ); ?></th>
-						<th><?php esc_html_e( 'IP Status', 'third-audience' ); ?></th>
 						<th><?php esc_html_e( 'Cache', 'third-audience' ); ?></th>
 						<th><?php esc_html_e( 'Response', 'third-audience' ); ?></th>
 					</tr>
@@ -833,7 +891,7 @@ $recent_violations = $rate_limiter->get_rate_limit_violations( 10 );
 				<tbody id="ta-activity-tbody">
 					<?php if ( empty( $recent_visits ) ) : ?>
 						<tr>
-							<td colspan="8" class="ta-no-data"><?php esc_html_e( 'No activity yet', 'third-audience' ); ?></td>
+							<td colspan="7" class="ta-no-data"><?php esc_html_e( 'No activity yet', 'third-audience' ); ?></td>
 						</tr>
 					<?php else : ?>
 						<?php
@@ -857,15 +915,36 @@ $recent_violations = $rate_limiter->get_rate_limit_violations( 10 );
 									</span>
 								</td>
 								<td>
-									<a href="<?php echo esc_url( $visit['url'] ); ?>" target="_blank" class="ta-page-link">
-										<?php echo esc_html( wp_trim_words( $visit['post_title'] ?? $visit['url'], 6 ) ); ?>
+									<?php
+									// Prefer the captured post title. '??' alone fails here because some
+									// citation rows store an empty string (not NULL), so fall back to the
+									// URL path / 'Homepage' / '(no title)' to avoid a blank PAGE cell.
+									if ( ! empty( $visit['post_title'] ) ) {
+										$page_label = $visit['post_title'];
+									} elseif ( ! empty( $visit['url'] ) ) {
+										$url_path   = wp_parse_url( $visit['url'], PHP_URL_PATH ) ?: $visit['url'];
+										$page_label = ( '' === $url_path || '/' === $url_path ) ? __( 'Homepage', 'third-audience' ) : trim( $url_path, '/' );
+									} else {
+										$page_label = __( '(no title)', 'third-audience' );
+									}
+									?>
+									<a href="<?php echo esc_url( ta_citation_public_url( $visit['url'] ) ); ?>" target="_blank" class="ta-page-link">
+										<?php echo esc_html( wp_trim_words( $page_label, 6 ) ); ?>
 									</a>
 								</td>
 								<td>
 									<?php
 									$content_type = $visit['content_type'] ?? 'html';
-									$type_class   = 'markdown' === $content_type ? 'ta-content-type-md' : 'ta-content-type-html';
-									$type_label   = 'markdown' === $content_type ? 'MD' : 'HTML';
+									if ( 'markdown' === $content_type ) {
+										$type_class = 'ta-content-type-md';
+										$type_label = 'MD';
+									} elseif ( 'text' === $content_type ) {
+										$type_class = 'ta-content-type-txt';
+										$type_label = 'TXT';
+									} else {
+										$type_class = 'ta-content-type-html';
+										$type_label = 'HTML';
+									}
 									?>
 									<span class="ta-content-type-badge <?php echo esc_attr( $type_class ); ?>">
 										<?php echo esc_html( $type_label ); ?>
@@ -882,37 +961,34 @@ $recent_violations = $rate_limiter->get_rate_limit_violations( 10 );
 								</td>
 								<td>
 									<?php
-									// IP Verification Badge (v2.7.0).
-									if ( isset( $visit['ip_verified'] ) ) {
-										if ( 1 === (int) $visit['ip_verified'] ) {
-											$verify_class = 'ta-ip-verified';
-											$verify_icon  = 'dashicons-yes-alt';
-											$verify_title = sprintf(
-												/* translators: %s: verification method */
-												esc_attr__( 'Verified via %s', 'third-audience' ),
-												$visit['ip_verification_method'] ?? 'IP'
-											);
-										} elseif ( 0 === (int) $visit['ip_verified'] ) {
-											$verify_class = 'ta-ip-failed';
-											$verify_icon  = 'dashicons-dismiss';
-											$verify_title = esc_attr__( 'Failed verification', 'third-audience' );
-										} else {
-											$verify_class = 'ta-ip-unverified';
-											$verify_icon  = 'dashicons-minus';
-											$verify_title = esc_attr__( 'Not verified', 'third-audience' );
-										}
-										?>
-									<span class="ta-ip-verify-badge <?php echo esc_attr( $verify_class ); ?>" title="<?php echo $verify_title; ?>">
-										<span class="dashicons <?php echo esc_attr( $verify_icon ); ?>"></span>
-									</span>
-									<?php } else { ?>
-										-
-									<?php } ?>
-								</td>
-								<td>
-									<span class="ta-cache-badge ta-cache-<?php echo esc_attr( strtolower( $visit['cache_status'] ) ); ?>">
-										<?php echo esc_html( $visit['cache_status'] ); ?>
-									</span>
+									// Cache status → speed icon + friendly label + tooltip (hover).
+									$cs = strtoupper( (string) ( $visit['cache_status'] ?? '' ) );
+									$cache_map = array(
+										'PRE_GENERATED' => array( '⚡', __( 'Instant', 'third-audience' ), __( 'Pre-generated — served from a saved copy (<1ms)', 'third-audience' ), '#34c759' ),
+										'HIT'           => array( '⚡', __( 'Cached', 'third-audience' ),  __( 'Served from cache (1–5ms)', 'third-audience' ), '#34c759' ),
+										'MISS'          => array( '🕐', __( 'Fresh', 'third-audience' ),   __( 'Generated fresh on this request (10–50ms)', 'third-audience' ), '#ff9500' ),
+										'FAILED'        => array( '⚠', __( 'Failed', 'third-audience' ),  __( 'Generation failed — check System Health', 'third-audience' ), '#ff3b30' ),
+									);
+									if ( isset( $cache_map[ $cs ] ) ) {
+										list( $c_icon, $c_label, $c_tip, $c_color ) = $cache_map[ $cs ];
+										printf(
+											'<span class="ta-cache-badge" style="color: %s;" title="%s">%s %s</span>',
+											esc_attr( $c_color ),
+											esc_attr( $c_tip ),
+											esc_html( $c_icon ),
+											esc_html( $c_label )
+										);
+									} elseif ( '' === $cs || 'N/A' === $cs ) {
+										echo '<span class="ta-cache-badge" style="color:#8e8e93;">—</span>';
+									} else {
+										// Legacy/other statuses (e.g. MARKDOWN) — show neutrally.
+										printf(
+											'<span class="ta-cache-badge" style="color:#8e8e93;" title="%s">%s</span>',
+											esc_attr( $cs ),
+											esc_html( ucfirst( strtolower( $cs ) ) )
+										);
+									}
+									?>
 								</td>
 								<td>
 									<?php if ( $visit['response_time'] ) : ?>
@@ -989,7 +1065,8 @@ $recent_violations = $rate_limiter->get_rate_limit_violations( 10 );
 			botDistribution: <?php echo wp_json_encode( $bot_stats ); ?>,
 			period: <?php echo wp_json_encode( $time_period ); ?>,
 			nonce: <?php echo wp_json_encode( wp_create_nonce( 'ta_bot_analytics' ) ); ?>,
-			feedNonce: <?php echo wp_json_encode( wp_create_nonce( 'ta_bot_analytics_feed' ) ); ?>
+			feedNonce: <?php echo wp_json_encode( wp_create_nonce( 'ta_bot_analytics_feed' ) ); ?>,
+			managementNonce: <?php echo wp_json_encode( wp_create_nonce( 'ta_bot_management' ) ); ?>
 		};
 
 		// Filters toggle
@@ -1008,6 +1085,7 @@ $recent_violations = $rate_limiter->get_rate_limit_violations( 10 );
 require_once __DIR__ . '/components/modals/cache-guide-modal.php';
 require_once __DIR__ . '/components/modals/session-analytics-modal.php';
 require_once __DIR__ . '/components/modals/hero-metrics-modal.php';
+require_once __DIR__ . '/components/modals/bot-detail-modal.php';
 ?>
 
 <script type="text/javascript">
@@ -1296,7 +1374,9 @@ jQuery(document).ready(function($) {
 		var botCounts = {};
 		fingerprints.forEach(function(fp) {
 			var botType = fp.bot_type || 'Unknown';
-			botCounts[botType] = (botCounts[botType] || 0) + fp.visit_count;
+			// Number() — visit_count arrives as a string from JSON; without this it
+			// string-concatenates ("0"+"23"+"160"...) and the chart shows huge values.
+			botCounts[botType] = (botCounts[botType] || 0) + Number(fp.visit_count || 0);
 		});
 
 		var labels = Object.keys(botCounts);
@@ -1343,6 +1423,162 @@ jQuery(document).ready(function($) {
 		div.textContent = text;
 		return div.innerHTML;
 	}
+
+	// ── Bot Detail Modal (Bot Activity Distribution row click) ────────────────
+	var botDetailChart = null;
+
+	$('.ta-bot-dist-row').on('click', function() {
+		openBotDetailModal($(this).data('bot-type'), $(this).data('bot-name'));
+	});
+	$('.ta-bot-dist-row').on('mouseenter', function() {
+		$(this).css('background', '#f0f6fc');
+	}).on('mouseleave', function() {
+		$(this).css('background', '');
+	});
+
+	$('.ta-bot-detail-close').on('click', function() { closeBotDetailModal(); });
+	$('.ta-bot-detail-overlay').on('click', function(e) {
+		if (e.target === this) { closeBotDetailModal(); }
+	});
+	$(document).on('keydown.botdetail', function(e) {
+		if (e.key === 'Escape' && $('.ta-bot-detail-overlay').is(':visible')) { closeBotDetailModal(); }
+	});
+
+	function openBotDetailModal(botType, botName) {
+		$('.ta-bot-detail-overlay').css('display', 'flex').hide().fadeIn(200);
+		$('.ta-bot-detail-loading').show();
+		$('.ta-bot-detail-content').hide();
+		$('#ta-bot-detail-title').text(botName + ' — Activity');
+
+		$.ajax({
+			url: ajaxurl,
+			type: 'POST',
+			data: {
+				action: 'ta_get_bot_details',
+				nonce: taAnalyticsData.managementNonce,
+				bot_type: botType,
+				bot_name: botName
+			},
+			success: function(r) {
+				if (r.success) { renderBotDetail(r.data); }
+				else { closeBotDetailModal(); }
+			},
+			error: function() { closeBotDetailModal(); }
+		});
+	}
+
+	function closeBotDetailModal() {
+		$('.ta-bot-detail-overlay').fadeOut(200);
+		if (botDetailChart) { botDetailChart.destroy(); botDetailChart = null; }
+	}
+
+	function renderBotDetail(data) {
+		var s     = data.summary || {};
+		var pages = data.top_pages || [];
+		var ipData = data.ip_data || [];
+		var resp  = data.response_distribution || {};
+
+		// 3 hero stats
+		$('#ta-bot-detail-stat1').text(parseInt(s.total_visits || 0).toLocaleString());
+		$('#ta-bot-detail-stat2').text(parseInt(s.unique_pages || 0).toLocaleString());
+		$('#ta-bot-detail-stat3').text(parseFloat(s.cache_hit_rate || 0).toFixed(1) + '%');
+
+		// Top pages doughnut — top 5 + Others bucket
+		var topPages   = pages.slice(0, 5);
+		var othersSum  = pages.slice(5).reduce(function(sum, p) { return sum + parseInt(p.visits); }, 0);
+		var chartLabels = topPages.map(function(p) {
+			var t = p.post_title || (p.url.split('/').filter(Boolean).pop()) || p.url;
+			return t.length > 28 ? t.substring(0, 25) + '…' : t;
+		});
+		var chartValues = topPages.map(function(p) { return parseInt(p.visits); });
+		if (othersSum > 0) { chartLabels.push('Others'); chartValues.push(othersSum); }
+
+		var colors = ['#007aff', '#34c759', '#ff9500', '#ff3b30', '#af52de', '#8e8e93'];
+		var ctx = document.getElementById('ta-bot-detail-chart');
+		if (ctx) {
+			if (botDetailChart) { botDetailChart.destroy(); }
+			botDetailChart = new Chart(ctx, {
+				type: 'doughnut',
+				data: {
+					labels: chartLabels,
+					datasets: [{ data: chartValues, backgroundColor: colors, borderWidth: 2, borderColor: '#fff' }]
+				},
+				options: {
+					responsive: true,
+					maintainAspectRatio: true,
+					plugins: { legend: { display: false } },
+					cutout: '55%'
+				}
+			});
+		}
+
+		// Legend
+		var total = chartValues.reduce(function(a, b) { return a + b; }, 0);
+		var legendHtml = chartLabels.map(function(label, i) {
+			var pct = total > 0 ? Math.round(chartValues[i] / total * 100) : 0;
+			return '<div style="display:flex;align-items:center;gap:6px;margin-bottom:5px;">' +
+				'<span style="width:8px;height:8px;border-radius:50%;background:' + colors[i] + ';flex-shrink:0;display:inline-block;"></span>' +
+				'<span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="' + escapeHtml(label) + '">' + escapeHtml(label) + '</span>' +
+				'<strong style="flex-shrink:0;">' + chartValues[i].toLocaleString() + '</strong>' +
+				'<span style="color:#8e8e93;font-size:10px;flex-shrink:0;">(' + pct + '%)</span>' +
+				'</div>';
+		}).join('');
+		$('#ta-bot-detail-legend').html(legendHtml || '<span style="color:#8e8e93;">No page data</span>');
+
+		// Countries from ip_data
+		var countryMap = {};
+		ipData.forEach(function(ip) {
+			var cc = ip.country_code || 'Unknown';
+			countryMap[cc] = (countryMap[cc] || 0) + parseInt(ip.visit_count);
+		});
+		var countryEntries = Object.entries ? Object.entries(countryMap) : Object.keys(countryMap).map(function(k) { return [k, countryMap[k]]; });
+		countryEntries.sort(function(a, b) { return b[1] - a[1]; });
+		countryEntries = countryEntries.slice(0, 6);
+		var maxC = countryEntries.length > 0 ? countryEntries[0][1] : 1;
+		var countryHtml = countryEntries.map(function(e) {
+			var barW = Math.round(e[1] / maxC * 100);
+			return '<div style="display:flex;align-items:center;gap:8px;margin-bottom:5px;">' +
+				'<span style="width:32px;text-align:right;font-size:11px;color:#646970;flex-shrink:0;">' + escapeHtml(e[0]) + '</span>' +
+				'<div style="flex:1;background:#e5e5ea;border-radius:3px;height:6px;overflow:hidden;">' +
+				'<div style="background:#34c759;width:' + barW + '%;height:100%;border-radius:3px;"></div></div>' +
+				'<strong style="width:28px;text-align:right;font-size:11px;flex-shrink:0;">' + e[1].toLocaleString() + '</strong>' +
+				'</div>';
+		}).join('');
+		$('#ta-bot-detail-countries').html(countryHtml || '<span style="color:#8e8e93;font-size:12px;">No country data</span>');
+
+		// Activity dates
+		var firstSeen = s.first_seen ? new Date(s.first_seen).toLocaleDateString('en-US', {month:'short',day:'numeric',year:'numeric'}) : '—';
+		var lastSeen  = s.last_seen  ? new Date(s.last_seen).toLocaleDateString('en-US',  {month:'short',day:'numeric',year:'numeric'}) : '—';
+		var avgResp   = s.avg_response_time ? Math.round(parseFloat(s.avg_response_time)) + 'ms' : '—';
+		$('#ta-bot-detail-activity').html(
+			'<div>📅 First seen: <strong>' + firstSeen + '</strong></div>' +
+			'<div>🕐 Last visit: <strong>' + lastSeen + '</strong></div>' +
+			'<div>⚡ Avg response: <strong>' + avgResp + '</strong></div>'
+		);
+
+		// Response time 4-box grid
+		var respItems = [
+			{ label: 'Under 50ms',  value: parseInt(resp.fast_under_50  || 0), color: '#34c759' },
+			{ label: '50–100ms',    value: parseInt(resp.good_50_100    || 0), color: '#007aff' },
+			{ label: '100–200ms',   value: parseInt(resp.ok_100_200     || 0), color: '#ff9500' },
+			{ label: '200ms+',      value: parseInt(resp.slow_over_200  || 0), color: '#ff3b30' }
+		];
+		var totalResp = respItems.reduce(function(sum, r) { return sum + r.value; }, 0);
+		var respHtml = respItems.map(function(item) {
+			var pct = totalResp > 0 ? Math.round(item.value / totalResp * 100) : 0;
+			return '<div style="text-align:center;background:#f5f5f7;border-radius:8px;padding:12px 8px;">' +
+				'<div style="font-size:22px;font-weight:700;color:' + item.color + ';">' + pct + '%</div>' +
+				'<div style="font-size:11px;color:#3c434a;margin-top:3px;font-weight:500;">' + item.label + '</div>' +
+				'<div style="font-size:10px;color:#8e8e93;margin-top:2px;">' + item.value.toLocaleString() + ' req</div>' +
+				'</div>';
+		}).join('');
+		$('#ta-bot-detail-response').html(respHtml);
+
+		$('.ta-bot-detail-loading').hide();
+		$('.ta-bot-detail-content').show();
+	}
+	// ─────────────────────────────────────────────────────────────────────────
+
 });
 
 // Activity Timeline Chart
@@ -1471,5 +1707,42 @@ jQuery(document).ready(function($) {
 		}
 	}
 	waitForChart();
+})();
+
+// JS-based engagement badge tooltip (fixed position — avoids table overflow clipping)
+(function() {
+	var tip = document.createElement('div');
+	tip.id = 'ta-engagement-tooltip';
+	tip.style.cssText = 'position:fixed;z-index:999999;background:#1d2327;color:#fff;font-size:12px;line-height:1.5;padding:8px 12px;border-radius:6px;width:260px;white-space:normal;text-align:left;pointer-events:none;box-shadow:0 4px 12px rgba(0,0,0,0.3);display:none;';
+	document.body.appendChild(tip);
+
+	document.addEventListener('mouseover', function(e) {
+		var badge = e.target.closest ? e.target.closest('.ta-engagement-badge') : null;
+		if (!badge) return;
+		var text = badge.getAttribute('data-tip');
+		if (!text) return;
+		tip.textContent = text;
+		tip.style.display = 'block';
+	});
+
+	document.addEventListener('mousemove', function(e) {
+		if (tip.style.display === 'none') return;
+		var x = e.clientX;
+		var y = e.clientY;
+		var tw = 260;
+		var th = tip.offsetHeight;
+		// keep within viewport horizontally
+		var left = Math.min(x - tw + 10, window.innerWidth - tw - 10);
+		left = Math.max(left, 10);
+		var top = y - th - 12;
+		if (top < 10) top = y + 16;
+		tip.style.left = left + 'px';
+		tip.style.top  = top  + 'px';
+	});
+
+	document.addEventListener('mouseout', function(e) {
+		var badge = e.target.closest ? e.target.closest('.ta-engagement-badge') : null;
+		if (badge) tip.style.display = 'none';
+	});
 })();
 </script>

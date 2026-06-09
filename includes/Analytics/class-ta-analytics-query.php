@@ -109,6 +109,19 @@ class TA_Analytics_Query {
 			);
 		}
 
+		// Exclude a traffic type (e.g. 'citation_click') — used by the Bot
+		// Activity feed to show only bot crawls, keeping human AI-referral
+		// clicks on the dedicated LLM Traffic page.
+		if ( ! empty( $filters['exclude_traffic_type'] ) ) {
+			$where_conditions[] = $wpdb->prepare( 'traffic_type != %s', $filters['exclude_traffic_type'] );
+		}
+
+		// Exclude a content type (e.g. 'html') — keeps plain HTML page crawls
+		// out of the bot-crawl views, leaving only .md / .txt requests.
+		if ( ! empty( $filters['exclude_content_type'] ) ) {
+			$where_conditions[] = $wpdb->prepare( 'content_type != %s', $filters['exclude_content_type'] );
+		}
+
 		return 'WHERE ' . implode( ' AND ', $where_conditions );
 	}
 
@@ -198,11 +211,14 @@ class TA_Analytics_Query {
 			"SELECT SUM(response_size) FROM {$table_name} {$where} AND response_size IS NOT NULL"
 		);
 
-		// Time-based stats.
-		$today       = gmdate( 'Y-m-d' );
-		$yesterday   = gmdate( 'Y-m-d', strtotime( '-1 day' ) );
-		$week_start  = gmdate( 'Y-m-d', strtotime( '-7 days' ) );
-		$month_start = gmdate( 'Y-m-d', strtotime( '-30 days' ) );
+		// Time-based stats. visit_timestamp is stored in SITE-LOCAL time
+		// (current_time('mysql')), so compute these dates in local time too —
+		// using gmdate(UTC) here made "Today" wrong (showed 0) on non-UTC sites.
+		$now_local   = current_time( 'timestamp' );
+		$today       = gmdate( 'Y-m-d', $now_local );
+		$yesterday   = gmdate( 'Y-m-d', $now_local - DAY_IN_SECONDS );
+		$week_start  = gmdate( 'Y-m-d', $now_local - 7 * DAY_IN_SECONDS );
+		$month_start = gmdate( 'Y-m-d', $now_local - 30 * DAY_IN_SECONDS );
 
 		// phpcs:ignore WordPress.DB.DirectDatabaseQuery
 		$summary['visits_today'] = (int) $wpdb->get_var(
@@ -302,21 +318,59 @@ class TA_Analytics_Query {
 
 		$where = $this->build_where_clause( $filters );
 
+		// Per-URL rows first. The same page is stored under several URL variants
+		// (HTML page vs .md markdown, backend host vs relative path, trailing
+		// slash differences), so we merge those variants in PHP below — each real
+		// page then appears once with its combined visit count.
 		// phpcs:ignore WordPress.DB.DirectDatabaseQuery
-		$results = $wpdb->get_results(
-			$wpdb->prepare(
-				"SELECT url, post_title, post_type, COUNT(*) as visits,
-				COUNT(DISTINCT bot_type) as unique_bots,
-				AVG(response_time) as avg_response_time
-				FROM {$table_name}
-				{$where}
-				GROUP BY url, post_title, post_type
-				ORDER BY visits DESC
-				LIMIT %d",
-				$limit
-			),
+		$rows = $wpdb->get_results(
+			"SELECT url, post_title, post_type,
+				COUNT(*) as visits,
+				COUNT(DISTINCT bot_type) as unique_bots
+			FROM {$table_name}
+			{$where}
+			GROUP BY url, post_title, post_type
+			ORDER BY visits DESC
+			LIMIT 1000",
 			ARRAY_A
 		);
+
+		// Merge variants using a canonical path key (strip .md, host, trailing slash).
+		$merged = array();
+		foreach ( $rows as $row ) {
+			$path = wp_parse_url( $row['url'], PHP_URL_PATH );
+			$path = ( is_string( $path ) && '' !== $path ) ? $path : ( '' !== (string) $row['url'] ? $row['url'] : '/' );
+			$key  = preg_replace( '/\.md$/i', '', $path );
+			$key  = ( '/' === $key || '' === $key ) ? '/' : strtolower( untrailingslashit( $key ) );
+
+			if ( ! isset( $merged[ $key ] ) ) {
+				$merged[ $key ] = array(
+					'url'         => $row['url'],
+					'post_title'  => $row['post_title'],
+					'post_type'   => $row['post_type'],
+					'visits'      => 0,
+					'unique_bots' => 0,
+				);
+			}
+
+			$merged[ $key ]['visits']     += (int) $row['visits'];
+			$merged[ $key ]['unique_bots'] = max( (int) $merged[ $key ]['unique_bots'], (int) $row['unique_bots'] );
+
+			// Prefer a non-empty title and the clean (non-.md) URL for display.
+			if ( empty( $merged[ $key ]['post_title'] ) && ! empty( $row['post_title'] ) ) {
+				$merged[ $key ]['post_title'] = $row['post_title'];
+			}
+			if ( preg_match( '/\.md$/i', (string) $merged[ $key ]['url'] ) && ! preg_match( '/\.md$/i', (string) $row['url'] ) ) {
+				$merged[ $key ]['url'] = $row['url'];
+			}
+		}
+
+		// Sort merged pages by total visits, take the requested top N.
+		$results = array_values( $merged );
+		usort( $results, function ( $a, $b ) {
+			return $b['visits'] - $a['visits'];
+		} );
+		$results = array_slice( $results, 0, $limit );
 
 		// Add aliases for backward compatibility with display code.
 		foreach ( $results as &$result ) {
@@ -324,6 +378,7 @@ class TA_Analytics_Query {
 			$result['page_title']   = $result['post_title'];
 			$result['visit_count']  = $result['visits'];
 		}
+		unset( $result );
 
 		return $results;
 	}
@@ -361,34 +416,63 @@ class TA_Analytics_Query {
 
 		$where_sql = 'WHERE ' . implode( ' AND ', $where_conditions );
 
+		// Per-URL crawl/citation counts. Bot crawls land on the .md URL while
+		// citations land on the HTML URL, so no single URL has BOTH — which made
+		// the citation rate always 0. We merge variants by canonical path below
+		// so each page's crawls + citations combine into one meaningful rate.
 		// phpcs:ignore WordPress.DB.DirectDatabaseQuery
-		$results = $wpdb->get_results(
-			$wpdb->prepare(
-				"SELECT
-					url,
-					post_title,
-					COUNT(CASE WHEN traffic_type = 'bot_crawl' THEN 1 END) as crawls,
-					COUNT(CASE WHEN traffic_type = 'citation_click' THEN 1 END) as citations,
-					(COUNT(CASE WHEN traffic_type = 'citation_click' THEN 1 END) * 1.0 /
-					 NULLIF(COUNT(CASE WHEN traffic_type = 'bot_crawl' THEN 1 END), 0)) as citation_rate
-				FROM {$table_name}
-				{$where_sql}
-				GROUP BY url, post_title
-				HAVING crawls > 0
-				ORDER BY crawls DESC
-				LIMIT %d",
-				$limit
-			),
+		$rows = $wpdb->get_results(
+			"SELECT
+				url,
+				post_title,
+				COUNT(CASE WHEN traffic_type = 'bot_crawl' THEN 1 END) as crawls,
+				COUNT(CASE WHEN traffic_type = 'citation_click' THEN 1 END) as citations
+			FROM {$table_name}
+			{$where_sql}
+			GROUP BY url, post_title
+			LIMIT 2000",
 			ARRAY_A
 		);
 
-		foreach ( $results as &$result ) {
-			$result['crawls']        = (int) $result['crawls'];
-			$result['citations']     = (int) $result['citations'];
-			$result['citation_rate'] = $result['citation_rate'] ? round( (float) $result['citation_rate'], 3 ) : 0;
+		$merged = array();
+		foreach ( $rows as $row ) {
+			$path = wp_parse_url( $row['url'], PHP_URL_PATH );
+			$path = ( is_string( $path ) && '' !== $path ) ? $path : ( '' !== (string) $row['url'] ? $row['url'] : '/' );
+			$key  = preg_replace( '/\.md$/i', '', $path );
+			$key  = ( '/' === $key || '' === $key ) ? '/' : strtolower( untrailingslashit( $key ) );
+
+			if ( ! isset( $merged[ $key ] ) ) {
+				$merged[ $key ] = array(
+					'url'        => $row['url'],
+					'post_title' => $row['post_title'],
+					'crawls'     => 0,
+					'citations'  => 0,
+				);
+			}
+			$merged[ $key ]['crawls']    += (int) $row['crawls'];
+			$merged[ $key ]['citations'] += (int) $row['citations'];
+			if ( empty( $merged[ $key ]['post_title'] ) && ! empty( $row['post_title'] ) ) {
+				$merged[ $key ]['post_title'] = $row['post_title'];
+			}
+			if ( preg_match( '/\.md$/i', (string) $merged[ $key ]['url'] ) && ! preg_match( '/\.md$/i', (string) $row['url'] ) ) {
+				$merged[ $key ]['url'] = $row['url'];
+			}
 		}
 
-		return $results;
+		// Keep crawled pages, compute the rate, sort by crawls, take top N.
+		$results = array();
+		foreach ( $merged as $page ) {
+			if ( $page['crawls'] <= 0 ) {
+				continue;
+			}
+			$page['citation_rate'] = round( $page['citations'] / $page['crawls'], 3 );
+			$results[] = $page;
+		}
+		usort( $results, function ( $a, $b ) {
+			return $b['crawls'] - $a['crawls'];
+		} );
+
+		return array_slice( $results, 0, $limit );
 	}
 
 	/**
@@ -557,7 +641,45 @@ class TA_Analytics_Query {
 			ARRAY_A
 		);
 
-		return $results ?: array();
+		$results = $results ?: array();
+
+		// Add human-readable fields the modal table renders (duration/interval/
+		// last seen + short UA). Without these the columns showed "undefined".
+		foreach ( $results as &$fp ) {
+			$fp['session_duration_human'] = $this->format_duration_seconds( (int) ( $fp['session_duration_avg'] ?? 0 ) );
+			$fp['request_interval_human'] = $this->format_duration_seconds( (int) ( $fp['request_interval_avg'] ?? 0 ) );
+			$fp['user_agent_short']       = mb_substr( (string) ( $fp['user_agent'] ?? '' ), 0, 60 );
+			$fp['last_seen_human']        = ! empty( $fp['last_seen'] )
+				? human_time_diff( strtotime( $fp['last_seen'] ), current_time( 'timestamp' ) ) . ' ago'
+				: '-';
+		}
+		unset( $fp );
+
+		return $results;
+	}
+
+	/**
+	 * Format a duration in seconds into a short human string (e.g. "45s",
+	 * "3m 20s", "1.3 hr"). Returns "-" for empty/zero.
+	 *
+	 * @since 3.5.6
+	 * @param int $seconds Duration in seconds.
+	 * @return string
+	 */
+	private function format_duration_seconds( $seconds ) {
+		$seconds = (int) $seconds;
+		if ( $seconds <= 0 ) {
+			return '-';
+		}
+		if ( $seconds < 60 ) {
+			return $seconds . 's';
+		}
+		if ( $seconds < 3600 ) {
+			$m = (int) floor( $seconds / 60 );
+			$s = $seconds % 60;
+			return $s ? "{$m}m {$s}s" : "{$m}m";
+		}
+		return round( $seconds / 3600, 1 ) . ' hr';
 	}
 
 	/**
@@ -623,20 +745,27 @@ class TA_Analytics_Query {
 			$where_conditions[] = $wpdb->prepare( 'bot_type = %s', $bot_type );
 		}
 
-		// Time period filter.
+		// Time period filter. Uses a DATETIME threshold (now - N) in site-local
+		// time so 'hour' is genuinely the last hour (the old code had no 'hour'
+		// case, so it fell through to 'day' — making both columns identical).
+		$now = current_time( 'timestamp' );
 		switch ( $period ) {
+			case 'hour':
+				$seconds = HOUR_IN_SECONDS;
+				break;
 			case 'week':
-				$date_threshold = gmdate( 'Y-m-d', strtotime( '-7 days' ) );
+				$seconds = 7 * DAY_IN_SECONDS;
 				break;
 			case 'month':
-				$date_threshold = gmdate( 'Y-m-d', strtotime( '-30 days' ) );
+				$seconds = 30 * DAY_IN_SECONDS;
 				break;
-			default: // day.
-				$date_threshold = gmdate( 'Y-m-d', strtotime( '-1 day' ) );
+			default: // day = last 24 hours.
+				$seconds = DAY_IN_SECONDS;
 				break;
 		}
 
-		$where_conditions[] = $wpdb->prepare( 'DATE(visit_timestamp) >= %s', $date_threshold );
+		$threshold          = gmdate( 'Y-m-d H:i:s', $now - $seconds );
+		$where_conditions[] = $wpdb->prepare( 'visit_timestamp >= %s', $threshold );
 		$where_sql          = 'WHERE ' . implode( ' AND ', $where_conditions );
 
 		// phpcs:ignore WordPress.DB.DirectDatabaseQuery
@@ -654,13 +783,16 @@ class TA_Analytics_Query {
 
 		$total = absint( $metrics['total_requests'] ?? 0 );
 
+		$bandwidth_bytes = absint( $metrics['total_bandwidth'] ?? 0 );
+
 		return array(
-			'total_requests'   => $total,
-			'unique_pages'     => absint( $metrics['unique_pages'] ?? 0 ),
-			'avg_response_ms'  => round( floatval( $metrics['avg_response_time'] ?? 0 ) ),
-			'total_bandwidth'  => absint( $metrics['total_bandwidth'] ?? 0 ),
-			'cache_hit_rate'   => $total > 0 ? round( ( absint( $metrics['cache_hits'] ?? 0 ) / $total ) * 100, 1 ) : 0,
-			'period'           => $period,
+			'total_requests'     => $total,
+			'unique_pages'       => absint( $metrics['unique_pages'] ?? 0 ),
+			'avg_response_ms'    => round( floatval( $metrics['avg_response_time'] ?? 0 ) ),
+			'total_bandwidth'    => $bandwidth_bytes,
+			'total_bandwidth_mb' => round( $bandwidth_bytes / 1048576, 2 ),
+			'cache_hit_rate'     => $total > 0 ? round( ( absint( $metrics['cache_hits'] ?? 0 ) / $total ) * 100, 1 ) : 0,
+			'period'             => $period,
 		);
 	}
 
@@ -675,38 +807,13 @@ class TA_Analytics_Query {
 		global $wpdb;
 		$table_name = $wpdb->prefix . self::TABLE_NAME;
 
-		$where = $this->build_where_clause( $filters );
-
-		// phpcs:ignore WordPress.DB.DirectDatabaseQuery
-		$cited_posts = $wpdb->get_results(
-			"SELECT
-				AVG(content_word_count) as avg_word_count,
-				AVG(content_heading_count) as avg_heading_count,
-				AVG(content_image_count) as avg_image_count,
-				AVG(content_freshness_days) as avg_freshness_days,
-				SUM(CASE WHEN content_has_schema = 1 THEN 1 ELSE 0 END) as with_schema,
-				COUNT(*) as total
-			FROM {$table_name}
-			{$where} AND traffic_type = 'citation_click' AND content_word_count IS NOT NULL",
-			ARRAY_A
-		);
-
-		// phpcs:ignore WordPress.DB.DirectDatabaseQuery
-		$crawled_posts = $wpdb->get_results(
-			"SELECT
-				AVG(content_word_count) as avg_word_count,
-				AVG(content_heading_count) as avg_heading_count,
-				AVG(content_image_count) as avg_image_count,
-				AVG(content_freshness_days) as avg_freshness_days,
-				SUM(CASE WHEN content_has_schema = 1 THEN 1 ELSE 0 END) as with_schema,
-				COUNT(*) as total
-			FROM {$table_name}
-			{$where} AND traffic_type = 'bot_crawl' AND content_word_count IS NOT NULL",
-			ARRAY_A
-		);
-
-		$cited   = $cited_posts[0] ?? array();
-		$crawled = $crawled_posts[0] ?? array();
+		// Content metrics (word count, headings, images, schema, freshness) are a
+		// property of the PAGE and are only stored on bot-crawl rows. Citation rows
+		// don't store them, so reading metrics off citation rows gave all zeros.
+		// Instead we look up the content metadata of the POSTS that received a
+		// citation (matched by post_id), averaged per post.
+		$cited   = $this->content_metrics_for_posts( $table_name, 'citation_click' );
+		$crawled = $this->content_metrics_for_posts( $table_name, 'bot_crawl' );
 
 		$cited_schema_pct = absint( $cited['total'] ?? 0 ) > 0
 			? round( ( absint( $cited['with_schema'] ?? 0 ) / absint( $cited['total'] ) ) * 100, 1 )
@@ -740,6 +847,54 @@ class TA_Analytics_Query {
 			),
 			'schema_multiplier' => $schema_multiplier,
 		);
+	}
+
+	/**
+	 * Per-post content metrics for posts that had at least one visit of a given
+	 * traffic type. Content metadata lives on bot-crawl rows, so this matches the
+	 * posts by post_id (not traffic type) — letting "Cited Posts" show real
+	 * numbers instead of zeros.
+	 *
+	 * @since 3.5.6
+	 * @param string $table_name   Analytics table name.
+	 * @param string $traffic_type 'citation_click' or 'bot_crawl'.
+	 * @return array { avg_word_count, avg_heading_count, avg_image_count, avg_freshness_days, with_schema, total }
+	 */
+	private function content_metrics_for_posts( $table_name, $traffic_type ) {
+		global $wpdb;
+
+		// phpcs:ignore WordPress.DB.DirectDatabaseQuery
+		$row = $wpdb->get_row(
+			$wpdb->prepare(
+				"SELECT
+					AVG(wc) as avg_word_count,
+					AVG(hc) as avg_heading_count,
+					AVG(ic) as avg_image_count,
+					AVG(fd) as avg_freshness_days,
+					SUM(has_schema) as with_schema,
+					COUNT(*) as total
+				FROM (
+					SELECT post_id,
+						MAX(content_word_count) as wc,
+						MAX(content_heading_count) as hc,
+						MAX(content_image_count) as ic,
+						MAX(content_freshness_days) as fd,
+						MAX(content_has_schema) as has_schema
+					FROM {$table_name}
+					WHERE content_word_count IS NOT NULL
+						AND post_id IS NOT NULL AND post_id > 0
+						AND post_id IN (
+							SELECT DISTINCT post_id FROM {$table_name}
+							WHERE traffic_type = %s AND post_id IS NOT NULL AND post_id > 0
+						)
+					GROUP BY post_id
+				) per_post",
+				$traffic_type
+			),
+			ARRAY_A
+		);
+
+		return $row ?: array();
 	}
 
 	/**

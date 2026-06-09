@@ -277,7 +277,8 @@
 				type: 'POST',
 				data: {
 					action: 'ta_regenerate_all_markdown',
-					nonce: taAdmin.nonce
+					// This handler verifies the 'cache_browser' nonce, not admin_ajax.
+					nonce: taAdmin.cacheNonce || taAdmin.nonce
 				},
 				success: function(response) {
 					if (response.success) {

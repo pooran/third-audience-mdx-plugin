@@ -307,7 +307,8 @@ class TA_Admin_AJAX_Cache {
 		}
 
 		$analytics = TA_Bot_Analytics::get_instance();
-		$accesses = $analytics->get_recent_visits( array(), 20, 0 );
+		// Exclude plain HTML page crawls — feed shows only .md / .txt requests.
+		$accesses = $analytics->get_recent_visits( array( 'exclude_content_type' => 'html' ), 20, 0 );
 
 		if ( empty( $accesses ) ) {
 			wp_send_json_success( array( 'accesses' => array() ) );
@@ -325,6 +326,7 @@ class TA_Admin_AJAX_Cache {
 				'cache_status'    => $access['cache_status'],
 				'response_time'   => intval( $access['response_time'] ?? 0 ),
 				'post_title'      => $access['post_title'] ?? 'Untitled',
+				'content_type'    => $access['content_type'] ?? 'markdown',
 			);
 		}
 

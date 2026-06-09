@@ -22,24 +22,24 @@ if ( ! defined( 'ABSPATH' ) ) {
 		<div class="ta-cache-modal-body">
 			<div class="ta-cache-guide-grid">
 				<div class="ta-cache-guide-item">
-					<span class="ta-cache-badge ta-cache-hit">HIT</span>
-					<h4><?php esc_html_e( 'Cache Hit', 'third-audience' ); ?></h4>
-					<p><?php esc_html_e( 'Served from cache (1-5ms). Best performance.', 'third-audience' ); ?></p>
+					<span class="ta-cache-badge ta-cache-pre_generated">⚡ Instant</span>
+					<h4><?php esc_html_e( 'PRE_GENERATED', 'third-audience' ); ?></h4>
+					<p><?php esc_html_e( 'Served from post meta (<1ms). Fastest possible. Permanent — set when you run Generate All. Never expires.', 'third-audience' ); ?></p>
 				</div>
 				<div class="ta-cache-guide-item">
-					<span class="ta-cache-badge ta-cache-pre_generated">PRE_GENERATED</span>
-					<h4><?php esc_html_e( 'Pre-generated', 'third-audience' ); ?></h4>
-					<p><?php esc_html_e( 'Served from post meta (<1ms). Fastest.', 'third-audience' ); ?></p>
+					<span class="ta-cache-badge ta-cache-hit">⚡ Cached</span>
+					<h4><?php esc_html_e( 'HIT', 'third-audience' ); ?></h4>
+					<p><?php esc_html_e( 'Served from transient cache (1–5ms). Renews automatically every 24 hours.', 'third-audience' ); ?></p>
 				</div>
 				<div class="ta-cache-guide-item">
-					<span class="ta-cache-badge ta-cache-miss">MISS</span>
-					<h4><?php esc_html_e( 'Cache Miss', 'third-audience' ); ?></h4>
-					<p><?php esc_html_e( 'Generated fresh (10-50ms). Slower.', 'third-audience' ); ?></p>
+					<span class="ta-cache-badge ta-cache-miss">🕐 Fresh</span>
+					<h4><?php esc_html_e( 'MISS', 'third-audience' ); ?></h4>
+					<p><?php esc_html_e( 'Generated fresh on this request (10–50ms). Saved to cache immediately after — next request will be a HIT.', 'third-audience' ); ?></p>
 				</div>
 				<div class="ta-cache-guide-item">
-					<span class="ta-cache-badge ta-cache-failed">FAILED</span>
-					<h4><?php esc_html_e( 'Failed', 'third-audience' ); ?></h4>
-					<p><?php esc_html_e( 'Generation error. Check System Health.', 'third-audience' ); ?></p>
+					<span class="ta-cache-badge ta-cache-failed">⚠ Failed</span>
+					<h4><?php esc_html_e( 'FAILED', 'third-audience' ); ?></h4>
+					<p><?php esc_html_e( 'Generation failed. Post may be deleted or content unavailable. Check System Health for details.', 'third-audience' ); ?></p>
 				</div>
 			</div>
 		</div>

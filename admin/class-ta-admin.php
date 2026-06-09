@@ -161,9 +161,12 @@ class TA_Admin {
 			wp_enqueue_style( 'ta-settings', TA_PLUGIN_URL . 'admin/css/settings.css', array( 'ta-admin' ), TA_VERSION );
 			wp_enqueue_script( 'ta-admin', TA_PLUGIN_URL . 'admin/js/admin.js', array( 'jquery' ), TA_VERSION, true );
 			wp_localize_script( 'ta-admin', 'taAdmin', array(
-				'ajaxUrl' => admin_url( 'admin-ajax.php' ),
-				'nonce'   => $this->security->create_nonce( 'admin_ajax' ),
-				'homeUrl' => trailingslashit( home_url() ),
+				'ajaxUrl'    => admin_url( 'admin-ajax.php' ),
+				'nonce'      => $this->security->create_nonce( 'admin_ajax' ),
+				// Cache handlers (e.g. Regenerate All Markdown) verify the 'cache_browser'
+				// nonce, so expose it here too — the Settings page only loads admin.js.
+				'cacheNonce' => $this->security->create_nonce( 'cache_browser' ),
+				'homeUrl'    => trailingslashit( home_url() ),
 				'i18n'    => array(
 					'testing'            => __( 'Testing...', 'third-audience' ),
 					'clearing'           => __( 'Clearing...', 'third-audience' ),
@@ -412,8 +415,8 @@ class TA_Admin {
 	public function add_settings_page() {
 		add_options_page( __( 'Third Audience Settings', 'third-audience' ), __( 'Third Audience', 'third-audience' ), 'manage_options', 'third-audience', array( $this, 'render_settings_page' ) );
 		add_menu_page( __( 'Bot Analytics', 'third-audience' ), __( 'Bot Analytics', 'third-audience' ), 'manage_options', 'third-audience-bot-analytics', array( $this, 'render_bot_analytics_page' ), 'dashicons-chart-line', 30 );
-		add_submenu_page( 'third-audience-bot-analytics', __( 'Bot Management', 'third-audience' ), __( 'Bot Management', 'third-audience' ), 'manage_options', 'third-audience-bot-management', array( $this, 'render_bot_management_page' ) );
 		add_submenu_page( 'third-audience-bot-analytics', __( 'LLM Traffic', 'third-audience' ), __( 'LLM Traffic', 'third-audience' ), 'manage_options', 'third-audience-ai-citations', array( $this, 'render_ai_citations_page' ) );
+		add_submenu_page( 'third-audience-bot-analytics', __( 'Bot Management', 'third-audience' ), __( 'Bot Management', 'third-audience' ), 'manage_options', 'third-audience-bot-management', array( $this, 'render_bot_management_page' ) );
 		add_submenu_page( 'third-audience-bot-analytics', __( 'Cache Browser', 'third-audience' ), __( 'Cache Browser', 'third-audience' ), 'manage_options', 'third-audience-cache-browser', array( $this, 'render_cache_browser_page' ) );
 		add_submenu_page( 'third-audience-bot-analytics', __( 'System Health', 'third-audience' ), __( 'System Health', 'third-audience' ), 'manage_options', 'third-audience-system-health', array( $this, 'render_system_health_page' ) );
 		// Competitor Benchmarking removed from v3.3.2 - feature disabled.

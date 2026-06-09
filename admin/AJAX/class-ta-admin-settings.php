@@ -302,6 +302,9 @@ class TA_Admin_Settings {
 			'framework'    => isset( $_POST['ta_headless_framework'] ) ? $this->security->sanitize_text( wp_unslash( $_POST['ta_headless_framework'] ) ) : 'nextjs',
 			// phpcs:ignore WordPress.Security.NonceVerification.Missing
 			'server_type'  => isset( $_POST['ta_headless_server_type'] ) ? $this->security->sanitize_text( wp_unslash( $_POST['ta_headless_server_type'] ) ) : 'nginx',
+			// Serve markdown to AI bots (frontend middleware reads this via REST config).
+			// phpcs:ignore WordPress.Security.NonceVerification.Missing
+			'bot_md_redirect' => ! empty( $_POST['ta_headless_bot_md_redirect'] ),
 		);
 
 		// Validate frontend URL if enabled.

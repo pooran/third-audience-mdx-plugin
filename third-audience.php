@@ -3,7 +3,7 @@
  * Plugin Name: Third Audience
  * Plugin URI: https://third-audience.dev
  * Description: Serve AI-optimized Markdown versions of your content to AI crawlers (ClaudeBot, GPTBot, PerplexityBot). Now with Zero-Configuration Auto-Deployment, Google Analytics 4 integration, Competitor Benchmarking, and comprehensive bot tracking!
- * Version: 3.5.3
+ * Version: 3.5.5
  * Author: Third Audience
  * Author URI: https://third-audience.dev
  * License: GPL v2 or later
@@ -27,7 +27,7 @@ if ( ! defined( 'ABSPATH' ) ) {
  *
  * @since 1.0.0
  */
-define( 'TA_VERSION', '3.5.3' );
+define( 'TA_VERSION', '3.5.5' );
 
 /**
  * Database version for migrations.
@@ -300,6 +300,26 @@ add_action( 'admin_init', 'ta_auto_fix_database', 1 );
  * @since 3.5.4
  * @return void
  */
+/**
+ * Fetch dynamic IP ranges on first admin load after activation.
+ *
+ * @since 2.8.0
+ * @return void
+ */
+function ta_maybe_refresh_ip_ranges() {
+	if ( ! get_transient( 'ta_needs_ip_range_refresh' ) ) {
+		return;
+	}
+
+	delete_transient( 'ta_needs_ip_range_refresh' );
+
+	if ( class_exists( 'TA_IP_Verifier' ) ) {
+		$ip_verifier = TA_IP_Verifier::get_instance();
+		$ip_verifier->fetch_dynamic_ranges();
+	}
+}
+add_action( 'admin_init', 'ta_maybe_refresh_ip_ranges', 3 );
+
 function ta_maybe_detect_environment() {
 	if ( ! get_transient( 'ta_needs_environment_detection' ) ) {
 		return;
@@ -603,6 +623,9 @@ function ta_activate() {
 		wp_schedule_event( time() + DAY_IN_SECONDS, 'daily', 'ta_daily_health_check' );
 	}
 
+	// PHASE 7: Fetch dynamic bot IP ranges immediately on activation.
+	set_transient( 'ta_needs_ip_range_refresh', true, DAY_IN_SECONDS );
+
 	$logger->info( 'Plugin activation completed successfully' );
 }
 register_activation_hook( __FILE__, 'ta_activate' );
@@ -731,6 +754,31 @@ function ta_upgrade( $installed_version ) {
 			TA_Competitor_Benchmarking::get_instance();
 			$logger->info( 'Upgraded to v3.1.0 - Competitor Benchmarking feature added.' );
 		}
+	}
+
+	// Upgrade to 3.5.5 - .txt serving + stop logging plain HTML bot crawls.
+	if ( version_compare( $installed_version, '3.5.5', '<' ) ) {
+		global $wpdb;
+
+		// One-time cleanup: remove previously-logged plain HTML page crawls so
+		// they no longer inflate the bot-crawl analytics. Only bot_crawl + html
+		// rows are removed; .md/.txt crawls and citation clicks are untouched.
+		$visits_table = $wpdb->prefix . 'ta_bot_analytics';
+		// phpcs:ignore WordPress.DB.DirectDatabaseQuery
+		$deleted = $wpdb->query(
+			$wpdb->prepare(
+				"DELETE FROM {$visits_table} WHERE traffic_type = %s AND content_type = %s",
+				'bot_crawl',
+				'html'
+			)
+		);
+
+		// Flush rewrite rules so the new (.*)\.txt rule takes effect.
+		flush_rewrite_rules();
+
+		$logger->info( 'Upgraded to v3.5.5 - .txt serving enabled, HTML crawl rows cleaned.', array(
+			'html_rows_deleted' => is_numeric( $deleted ) ? (int) $deleted : 0,
+		) );
 	}
 
 	// Log upgrade completion.
@@ -888,8 +936,104 @@ function ta_register_rest_routes() {
 			),
 		),
 	) );
+
+	// Public config for the headless frontend middleware: tells it whether to
+	// redirect AI bots to the .md version and which user-agents count as AI bots
+	// (vs search engines, which must keep getting HTML for SEO).
+	register_rest_route( 'third-audience/v1', '/bot-md-config', array(
+		'methods'             => 'GET',
+		'callback'            => 'ta_bot_md_config_callback',
+		'permission_callback' => '__return_true',
+	) );
+
+	// TEMP DIAGNOSTIC — capture request headers (esp. iOS Claude app clicks).
+	// POST stores last 100; GET returns them. REMOVE after diagnosis.
+	register_rest_route( 'third-audience/v1', '/debug-headers', array(
+		array(
+			'methods'             => 'POST',
+			'callback'            => 'ta_debug_headers_store',
+			'permission_callback' => '__return_true',
+		),
+		array(
+			'methods'             => 'GET',
+			'callback'            => 'ta_debug_headers_get',
+			'permission_callback' => '__return_true',
+		),
+	) );
 }
 add_action( 'rest_api_init', 'ta_register_rest_routes' );
+
+/**
+ * TEMP DIAGNOSTIC: store the last 100 header snapshots sent by the middleware.
+ */
+function ta_debug_headers_store( $request ) {
+	$data = $request->get_json_params();
+	if ( empty( $data ) ) {
+		$data = $request->get_params();
+	}
+	$log = get_option( 'ta_debug_headers_log', array() );
+	if ( ! is_array( $log ) ) {
+		$log = array();
+	}
+	array_unshift( $log, array(
+		'time' => current_time( 'mysql' ),
+		'data' => $data,
+	) );
+	$log = array_slice( $log, 0, 100 );
+	update_option( 'ta_debug_headers_log', $log, false );
+	return rest_ensure_response( array( 'stored' => true ) );
+}
+
+/**
+ * TEMP DIAGNOSTIC: return the captured header snapshots (newest first).
+ */
+function ta_debug_headers_get() {
+	return rest_ensure_response( get_option( 'ta_debug_headers_log', array() ) );
+}
+
+/**
+ * REST callback: AI-bot → markdown config for the headless frontend.
+ *
+ * The Next.js middleware fetches this to decide which crawlers get redirected
+ * to the .md version. Search engines (exclude_patterns) and humans always get
+ * HTML so SEO and UX are unaffected.
+ *
+ * @since 3.5.6
+ * @return WP_REST_Response
+ */
+function ta_bot_md_config_callback() {
+	$settings = get_option( 'ta_headless_settings', array() );
+	$enabled  = is_array( $settings ) && ! empty( $settings['bot_md_redirect'] );
+
+	// AI/LLM crawler user-agents that should receive markdown.
+	$ai_bot_patterns = array(
+		'GPTBot', 'ChatGPT-User', 'OAI-SearchBot',
+		'ClaudeBot', 'Claude-User', 'Claude-Web', 'anthropic-ai',
+		'PerplexityBot', 'Perplexity-User',
+		'Google-Extended', 'Bytespider', 'Amazonbot',
+		'cohere-ai', 'CCBot', 'Meta-ExternalAgent',
+		'YouBot', 'DuckAssistBot',
+	);
+
+	// Search/index crawlers that MUST keep getting HTML (SEO). Checked first,
+	// so they are never redirected even if a substring overlaps an AI pattern.
+	$exclude_patterns = array(
+		'Googlebot', 'bingbot', 'Slurp', 'DuckDuckBot', 'Baiduspider', 'YandexBot',
+	);
+
+	/**
+	 * Filter the AI-bot markdown config exposed to the headless frontend.
+	 *
+	 * @param array $config { enabled, ai_bot_patterns, exclude_patterns }
+	 */
+	$config = apply_filters( 'ta_bot_md_config', array(
+		'enabled'          => (bool) $enabled,
+		'ai_bot_patterns'  => $ai_bot_patterns,
+		'exclude_patterns' => $exclude_patterns,
+	) );
+
+	return new WP_REST_Response( $config, 200 );
+}
 
 /**
  * Register GraphQL mutation for citation tracking (headless WordPress support).
@@ -985,7 +1129,7 @@ function ta_register_graphql_mutation() {
 				$query    = sanitize_text_field( $input['searchQuery'] ?? '' );
 
 				// Get page data.
-				$post_id    = url_to_postid( $url );
+				$post_id    = ta_resolve_url_to_post_id( $url );
 				$post_type  = null;
 				$page_title = '';
 				if ( $post_id ) {
@@ -1010,18 +1154,6 @@ function ta_register_graphql_mutation() {
 					$ip_verified = $verification_result['verified'];
 					$ip_verification_method = $verification_result['method'];
 				}
-
-				// Duplicate prevention.
-				$dedup_key = 'ta_citation_' . md5( $url . $platform . $client_ip );
-				if ( get_transient( $dedup_key ) ) {
-					return array(
-						'success'  => true,
-						'message'  => 'Citation already tracked recently',
-						'platform' => $platform,
-						'url'      => $url,
-					);
-				}
-				set_transient( $dedup_key, true, 5 * MINUTE_IN_SECONDS );
 
 				// Insert into database.
 				global $wpdb;
@@ -1224,9 +1356,12 @@ function ta_verify_citation_api_key( $request ) {
 		}
 	}
 
-	// 4. Validate platform is from allowed list.
+	// 4. Validate platform is from allowed list. 'unknown'/'hidden' are included
+	// so Sec-Fetch hidden-referrer hits (claude.ai / perplexity strip the Referer)
+	// pass validation and get relabelled to "Hidden Referrer (Claude)" — matching
+	// the AJAX handler's allowed list.
 	$platform          = $request->get_param( 'platform' );
-	$allowed_platforms = array( 'chatgpt', 'perplexity', 'claude', 'gemini', 'copilot', 'bing', 'google' );
+	$allowed_platforms = array( 'chatgpt', 'perplexity', 'claude', 'gemini', 'copilot', 'bing', 'google', 'unknown', 'hidden' );
 	$platform_lower    = strtolower( $platform );
 	$platform_valid    = false;
 
@@ -1294,6 +1429,273 @@ function ta_verify_citation_api_key( $request ) {
 }
 
 /**
+ * Resolve a URL (relative or absolute) to a WordPress post ID.
+ *
+ * Tries multiple methods to handle headless setups where home_url differs
+ * from the WordPress installation URL. Falls back to slug-based lookup so
+ * that citation tracking always stores a post title even when url_to_postid
+ * returns 0 due to domain mismatch.
+ *
+ * @since 3.5.5
+ * @param string $url Relative path (e.g. '/about/') or absolute URL.
+ * @return int Post ID or 0 if not found.
+ */
+function ta_resolve_url_to_post_id( $url ) {
+	if ( empty( $url ) || '/' === $url ) {
+		return (int) get_option( 'page_on_front', 0 );
+	}
+
+	// Method 1: direct lookup (works when $url is absolute and matches home_url).
+	$post_id = url_to_postid( $url );
+	if ( $post_id ) {
+		return $post_id;
+	}
+
+	// Method 2: prepend home_url (for relative paths like '/about/').
+	if ( '/' === substr( $url, 0, 1 ) ) {
+		$post_id = url_to_postid( home_url( $url ) );
+		if ( $post_id ) {
+			return $post_id;
+		}
+	}
+
+	// Method 3: try with/without trailing slash.
+	$post_id = url_to_postid( trailingslashit( home_url( $url ) ) );
+	if ( $post_id ) {
+		return $post_id;
+	}
+	$post_id = url_to_postid( untrailingslashit( home_url( $url ) ) );
+	if ( $post_id ) {
+		return $post_id;
+	}
+
+	// Method 4: slug-based get_posts (handles category-prefixed permalinks).
+	$slug = basename( untrailingslashit( wp_parse_url( $url, PHP_URL_PATH ) ?: $url ) );
+	if ( ! empty( $slug ) ) {
+		$enabled_types = get_option( 'ta_enabled_post_types', array( 'post', 'page' ) );
+
+		$posts = get_posts( array(
+			'name'           => $slug,
+			'post_type'      => $enabled_types,
+			'post_status'    => 'publish',
+			'posts_per_page' => 1,
+			'fields'         => 'ids',
+		) );
+
+		if ( ! empty( $posts ) ) {
+			return (int) $posts[0];
+		}
+
+		// Method 5: WP_Query pagename for hierarchical pages.
+		$query = new WP_Query( array(
+			'pagename'       => $slug,
+			'post_status'    => 'publish',
+			'posts_per_page' => 1,
+			'fields'         => 'ids',
+		) );
+
+		if ( $query->have_posts() ) {
+			$id = (int) $query->posts[0];
+			wp_reset_postdata();
+			return $id;
+		}
+		wp_reset_postdata();
+	}
+
+	return 0;
+}
+
+/**
+ * Build a public, clickable URL for a tracked citation/visit.
+ *
+ * Citation records (especially from the headless Next.js middleware) store a
+ * relative path like "/blog/foo/". Rendered as-is in wp-admin it resolves to the
+ * WordPress backend domain (e.g. wp.example.com) instead of the public frontend.
+ * This prepends the configured headless Frontend URL so links open the real page.
+ *
+ * Absolute URLs are returned unchanged. When headless mode/Frontend URL is not
+ * configured, falls back to home_url() (existing behaviour).
+ *
+ * @since 3.5.6
+ * @param string $url Stored URL (relative path or absolute URL).
+ * @return string Absolute, public-facing URL.
+ */
+function ta_citation_public_url( $url ) {
+	$url = (string) $url;
+	if ( '' === $url ) {
+		return '';
+	}
+
+	// Public frontend base from headless settings (empty when not headless).
+	$settings = get_option( 'ta_headless_settings', array() );
+	$frontend = ( is_array( $settings ) && ! empty( $settings['frontend_url'] ) )
+		? untrailingslashit( $settings['frontend_url'] )
+		: '';
+
+	$is_absolute = (bool) preg_match( '#^https?://#i', $url );
+
+	// Not headless (no Frontend URL configured): keep the original behaviour.
+	if ( '' === $frontend ) {
+		return $is_absolute ? $url : home_url( '/' . ltrim( $url, '/' ) );
+	}
+
+	if ( $is_absolute ) {
+		// Rewrite ONLY URLs pointing at this WordPress backend (home_url host) —
+		// e.g. bot-crawl rows stored as https://wp.example.com/page.md. Genuinely
+		// external URLs are left untouched.
+		$backend_host = wp_parse_url( home_url(), PHP_URL_HOST );
+		$url_host     = wp_parse_url( $url, PHP_URL_HOST );
+		if ( $url_host && $backend_host && 0 === strcasecmp( $url_host, $backend_host ) ) {
+			$path  = wp_parse_url( $url, PHP_URL_PATH );
+			$path  = is_string( $path ) && '' !== $path ? $path : '/';
+			$query = wp_parse_url( $url, PHP_URL_QUERY );
+			return $frontend . $path . ( $query ? '?' . $query : '' );
+		}
+		return $url; // external absolute URL — leave as-is.
+	}
+
+	// Relative path → prepend the frontend base.
+	return $frontend . '/' . ltrim( $url, '/' );
+}
+
+/**
+ * Human-readable display title for a tracked page.
+ *
+ * Many rows (especially bot crawls of the .md version) have no stored
+ * post_title, so the UI was falling back to the raw URL (e.g.
+ * "https://wp.textbolt.com/index.md"). This returns the real post title when
+ * available — stripping a trailing ".md" and resolving the post — and otherwise
+ * a readable label from the slug ("Homepage" for the front page).
+ *
+ * @since 3.5.6
+ * @param string $title Stored post title (may be empty).
+ * @param string $url   Stored URL for the row.
+ * @return string Display title.
+ */
+function ta_page_display_title( $title, $url ) {
+	$title = trim( (string) $title );
+	if ( '' !== $title ) {
+		return $title;
+	}
+
+	$url = (string) $url;
+	if ( '' === $url ) {
+		return __( '(no title)', 'third-audience' );
+	}
+
+	// Strip a trailing .md (markdown crawl URLs) before resolving.
+	$clean = preg_replace( '/\.md$/i', '', $url );
+
+	// Try to resolve the real WP post title.
+	if ( function_exists( 'ta_resolve_url_to_post_id' ) ) {
+		$post_id = ta_resolve_url_to_post_id( $clean );
+		if ( $post_id ) {
+			$resolved = get_the_title( $post_id );
+			if ( ! empty( $resolved ) ) {
+				return $resolved;
+			}
+		}
+	}
+
+	// Fall back to a readable label from the URL path.
+	$path = wp_parse_url( $clean, PHP_URL_PATH );
+	$path = is_string( $path ) ? trim( $path, '/' ) : trim( $clean, '/' );
+	if ( '' === $path || 'index' === strtolower( $path ) ) {
+		return __( 'Homepage', 'third-audience' );
+	}
+	$slug = str_replace( array( '-', '_' ), ' ', basename( $path ) );
+	return ucwords( $slug );
+}
+
+/**
+ * Decide whether a URL is a real, trackable citation page (vs junk).
+ *
+ * Headless setups (Next.js middleware) can forward citation hits for static
+ * assets and framework-internal requests — e.g. /_next/static/chunks/*.js or
+ * *.css — because those sub-resource requests carry the page's utm/referer.
+ * Those are not real page visits and must not be stored as citations.
+ *
+ * Extension matching is done against the path's actual extension (not a naive
+ * substring) so legitimate slugs like /node.js-guide/ are NOT blocked.
+ *
+ * @since 3.5.6
+ * @param string $url Relative path or absolute URL.
+ * @return bool True if the URL should be tracked as a citation.
+ */
+function ta_is_trackable_citation_url( $url ) {
+	$url = (string) $url;
+	if ( '' === $url ) {
+		return false;
+	}
+
+	// Work on the path portion only.
+	$path = wp_parse_url( $url, PHP_URL_PATH );
+	if ( ! is_string( $path ) || '' === $path ) {
+		$path = $url;
+	}
+	$path_lower = strtolower( $path );
+
+	// Block admin, system, and framework-internal paths.
+	$blocked_substrings = array(
+		'/wp-admin', '/wp-login', 'admin-ajax.php', '/wp-cron', '/wp-json',
+		'/feed/', '/xmlrpc', '/_next/', '/__nextjs', '/.well-known/',
+	);
+	foreach ( $blocked_substrings as $needle ) {
+		if ( false !== strpos( $path_lower, $needle ) ) {
+			return false;
+		}
+	}
+
+	// Block static-asset file extensions (matched at the END of the path only).
+	$blocked_extensions = array(
+		'js', 'mjs', 'css', 'map', 'json', 'xml', 'txt', 'ico',
+		'png', 'jpg', 'jpeg', 'gif', 'svg', 'webp', 'avif',
+		'woff', 'woff2', 'ttf', 'eot', 'mp4', 'webm', 'zip', 'gz',
+	);
+	$ext = strtolower( (string) pathinfo( $path_lower, PATHINFO_EXTENSION ) );
+	if ( '' !== $ext && in_array( $ext, $blocked_extensions, true ) ) {
+		return false;
+	}
+
+	return true;
+}
+
+/**
+ * Public permalink for a post, headless-aware.
+ *
+ * get_permalink() always returns the WordPress backend URL (e.g.
+ * wp.example.com). On a headless install the public page lives on the
+ * configured Frontend URL (e.g. example.com), so links printed inside the
+ * generated markdown (frontmatter url, "view original", related posts) must
+ * use the frontend host — otherwise bots/users are sent to the backend.
+ *
+ * When headless mode is OFF (normal WordPress site), this returns the plain
+ * get_permalink() unchanged, so it is safe for every install.
+ *
+ * @since 3.5.6
+ * @param int $post_id Post ID.
+ * @return string Public permalink.
+ */
+function ta_frontend_permalink( $post_id ) {
+	$permalink = get_permalink( $post_id );
+	if ( ! $permalink ) {
+		return $permalink;
+	}
+
+	$settings = get_option( 'ta_headless_settings', array() );
+	if ( ! is_array( $settings ) || empty( $settings['enabled'] ) || empty( $settings['frontend_url'] ) ) {
+		return $permalink; // Not headless — backend permalink is correct.
+	}
+
+	$path = wp_parse_url( $permalink, PHP_URL_PATH );
+	if ( ! is_string( $path ) || '' === $path ) {
+		return $permalink;
+	}
+
+	return untrailingslashit( $settings['frontend_url'] ) . $path;
+}
+
+/**
  * Get client IP for rate limiting.
  *
  * @since 3.3.2
@@ -1335,34 +1737,36 @@ function ta_track_citation_callback( $request ) {
 	// (Next.js middleware forwarding req.headers['user-agent'] from the browser request).
 	$client_user_agent = $request->get_param( 'client_user_agent' )
 		?: ( $request->get_header( 'x-client-user-agent' ) ?: null );
-	// Map middleware detection_type ('utm'|'referer') to consistent detection_method values.
+	// Map middleware detection_type ('utm'|'referer'|'sec_fetch') to detection_method.
+	// 'sec_fetch' = cross-site navigation with a stripped Referer (e.g. claude.ai's
+	// same-origin policy) — a hidden-referrer hit captured as low-confidence.
 	$detection_type   = $request->get_param( 'detection_type' ) ?: '';
 	$detection_method = 'utm' === $detection_type ? 'utm_parameter'
-		: ( 'referer' === $detection_type ? 'http_referer' : 'rest_api' );
+		: ( 'referer' === $detection_type ? 'http_referer'
+		: ( 'sec_fetch' === $detection_type ? 'sec_fetch_site' : 'rest_api' ) );
+	$is_hidden_referrer = ( 'sec_fetch_site' === $detection_method );
 
 	// Sanitize URL - only allow relative paths or paths from this site.
 	$url = wp_parse_url( $url, PHP_URL_PATH ) ?: $url;
 	$url = sanitize_text_field( $url );
 
+	// Skip junk: static assets (/_next/*.js, *.css) and admin/system URLs.
+	// These sub-resource requests inherit the page's utm/referer and would
+	// otherwise be stored as fake citations.
+	if ( function_exists( 'ta_is_trackable_citation_url' ) && ! ta_is_trackable_citation_url( $url ) ) {
+		return new WP_REST_Response(
+			array( 'success' => true, 'skipped' => true, 'reason' => 'non-trackable URL (asset/system)' ),
+			200
+		);
+	}
+
 	// Normalize platform name.
 	$platform = ucfirst( strtolower( sanitize_text_field( $platform ) ) );
 
-	// Session-based dedup - treat same IP+platform within 30 minutes as one session.
-	// Matches GA4 session logic (30-min window). URL excluded so browsing multiple
-	// pages in one AI-referred session counts as a single visit.
-	$dedup_key       = 'ta_citation_session_' . md5( $platform . $ip );
-	$already_tracked = get_transient( $dedup_key );
-
-	if ( $already_tracked ) {
-		return new WP_REST_Response( array(
-			'success'  => true,
-			'message'  => 'Citation already tracked recently',
-			'duplicate' => true,
-		), 200 );
+	// Hidden-referrer hits can't be attributed by name — label them clearly.
+	if ( $is_hidden_referrer ) {
+		$platform = 'Hidden Referrer (Claude)';
 	}
-
-	// Mark session as tracked for 30 minutes.
-	set_transient( $dedup_key, true, 30 * MINUTE_IN_SECONDS );
 
 	// Determine platform color.
 	$platform_colors = array(
@@ -1379,7 +1783,7 @@ function ta_track_citation_callback( $request ) {
 
 	// Get page title and post data from URL.
 	$page_title = '';
-	$post_id    = url_to_postid( $url );
+	$post_id    = ta_resolve_url_to_post_id( $url );
 	$post_type  = null;
 	if ( $post_id ) {
 		$page_title = get_the_title( $post_id );
@@ -1431,7 +1835,7 @@ function ta_track_citation_callback( $request ) {
 			'referer_source'         => $platform,
 			'referer_medium'         => 'ai_citation',
 			'detection_method'       => $detection_method,
-			'confidence_score'       => 1.0,
+			'confidence_score'       => $is_hidden_referrer ? 0.5 : 1.0,
 			'ip_verified'            => $ip_verified,
 			'ip_verification_method' => $ip_verification_method,
 			'visit_timestamp'        => current_time( 'mysql' ),
@@ -1609,6 +2013,12 @@ function ta_daily_health_check() {
 	// Verify REST API routes are registered.
 	// This fixes the issue where routes disappear after plugin reactivation.
 	ta_verify_rest_routes();
+
+	// Refresh dynamic bot IP ranges from official sources.
+	if ( class_exists( 'TA_IP_Verifier' ) ) {
+		$ip_verifier = TA_IP_Verifier::get_instance();
+		$ip_verifier->fetch_dynamic_ranges();
+	}
 }
 add_action( 'ta_daily_health_check', 'ta_daily_health_check' );
 

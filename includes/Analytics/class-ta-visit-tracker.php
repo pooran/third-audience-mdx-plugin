@@ -336,6 +336,23 @@ class TA_Visit_Tracker {
 			return 'rsc_prefetch';
 		}
 
+		// Browser prefetch / prerender requests are NOT real visits. Browsers send
+		// these hint headers when speculatively fetching links (nav/footer), which
+		// otherwise get logged as a burst of fake citation hits. Skip them.
+		$sec_purpose = strtolower( isset( $_SERVER['HTTP_SEC_PURPOSE'] ) ? sanitize_text_field( wp_unslash( $_SERVER['HTTP_SEC_PURPOSE'] ) ) : '' );
+		$purpose     = strtolower( isset( $_SERVER['HTTP_PURPOSE'] ) ? sanitize_text_field( wp_unslash( $_SERVER['HTTP_PURPOSE'] ) ) : '' );
+		$moz_prefetch = strtolower( isset( $_SERVER['HTTP_X_MOZ'] ) ? sanitize_text_field( wp_unslash( $_SERVER['HTTP_X_MOZ'] ) ) : '' );
+		$x_purpose   = strtolower( isset( $_SERVER['HTTP_X_PURPOSE'] ) ? sanitize_text_field( wp_unslash( $_SERVER['HTTP_X_PURPOSE'] ) ) : '' );
+		if (
+			false !== strpos( $sec_purpose, 'prefetch' )
+			|| false !== strpos( $sec_purpose, 'prerender' )
+			|| false !== strpos( $purpose, 'prefetch' )
+			|| false !== strpos( $moz_prefetch, 'prefetch' )
+			|| in_array( $x_purpose, array( 'preview', 'prefetch' ), true )
+		) {
+			return 'rsc_prefetch';
+		}
+
 		// Check if it's an API or AJAX request.
 		if ( defined( 'REST_REQUEST' ) && REST_REQUEST ) {
 			return 'api_call';
@@ -384,7 +401,7 @@ class TA_Visit_Tracker {
 		$post_id    = get_queried_object_id() ?: null;
 		$post       = $post_id ? get_post( $post_id ) : null;
 		$post_type  = $post ? $post->post_type  : ( ( is_front_page() || is_home() ) ? 'homepage' : null );
-		$post_title = $post ? $post->post_title : ( ( is_front_page() || is_home() ) ? get_bloginfo( 'name' ) : null );
+		$post_title = $post ? apply_filters( 'the_title', $post->post_title, $post->ID ) : ( ( is_front_page() || is_home() ) ? get_bloginfo( 'name' ) : null );
 
 		// Detect request type.
 		$request_type = $this->detect_request_type();

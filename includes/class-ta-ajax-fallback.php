@@ -98,12 +98,12 @@ class TA_AJAX_Fallback {
 		// phpcs:ignore WordPress.Security.NonceVerification.Missing
 		$url = isset( $_POST['url'] ) ? sanitize_text_field( wp_unslash( $_POST['url'] ) ) : '';
 
-		// Reject admin, login, and system URLs — these are never real citation traffic.
-		$blocked_patterns = array( '/wp-admin', '/wp-login', 'admin-ajax.php', '/wp-cron', '/feed/', '/xmlrpc' );
-		foreach ( $blocked_patterns as $pattern ) {
-			if ( strpos( $url, $pattern ) !== false ) {
-				wp_send_json_error( array( 'message' => 'Invalid URL — admin/system URLs cannot be tracked' ), 400 );
-			}
+		// Reject non-trackable URLs: static assets (/_next/*.js, *.css) and
+		// admin/system paths. These are never real citation traffic. Return a
+		// success+skipped response (not an error) so the middleware does not
+		// retry via the REST endpoint.
+		if ( function_exists( 'ta_is_trackable_citation_url' ) && ! ta_is_trackable_citation_url( $url ) ) {
+			wp_send_json_success( array( 'skipped' => true, 'reason' => 'non-trackable URL (asset/system)' ) );
 		}
 
 		// phpcs:ignore WordPress.Security.NonceVerification.Missing
@@ -114,18 +114,34 @@ class TA_AJAX_Fallback {
 		$ip                = isset( $_POST['ip'] ) ? sanitize_text_field( wp_unslash( $_POST['ip'] ) ) : $this->get_client_ip();
 		// phpcs:ignore WordPress.Security.NonceVerification.Missing
 		$client_user_agent = isset( $_POST['client_user_agent'] ) ? sanitize_text_field( wp_unslash( $_POST['client_user_agent'] ) ) : null;
-		// Map middleware detection_type ('utm'|'referer') to consistent detection_method values.
+		// Map middleware detection_type ('utm'|'referer'|'sec_fetch') to detection_method.
+		// 'sec_fetch' = cross-site navigation with a stripped Referer (e.g. claude.ai's
+		// same-origin referrer policy). We can't name the AI, but we know it's an
+		// external hidden-referrer click — captured here as a low-confidence signal.
 		// phpcs:ignore WordPress.Security.NonceVerification.Missing
 		$detection_type   = isset( $_POST['detection_type'] ) ? sanitize_text_field( wp_unslash( $_POST['detection_type'] ) ) : '';
 		$detection_method = 'utm' === $detection_type ? 'utm_parameter'
-			: ( 'referer' === $detection_type ? 'http_referer' : 'ajax_api' );
+			: ( 'referer' === $detection_type ? 'http_referer'
+			: ( 'sec_fetch' === $detection_type ? 'sec_fetch_site' : 'ajax_api' ) );
 
 		// Normalize platform name.
 		$platform = ucfirst( strtolower( $platform ) );
 
+		// Hidden-referrer hits can't be attributed to a specific AI by name, so give
+		// them a clear, consistent label instead of the placeholder from middleware.
+		$is_hidden_referrer = ( 'sec_fetch_site' === $detection_method );
+		if ( $is_hidden_referrer ) {
+			$platform = 'Hidden Referrer (Claude)';
+		}
+
+		// Heuristic (sec-fetch) detections are less certain than UTM/referer matches.
+		$confidence_score = $is_hidden_referrer ? 0.5 : 1.0;
+
 		// Get page title and post data from URL.
 		$page_title = '';
-		$post_id    = url_to_postid( $url );
+		$post_id    = function_exists( 'ta_resolve_url_to_post_id' )
+			? ta_resolve_url_to_post_id( $url )
+			: url_to_postid( $url );
 		$post_type  = null;
 		if ( $post_id ) {
 			$page_title = get_the_title( $post_id );
@@ -158,7 +174,9 @@ class TA_AJAX_Fallback {
 		$result = $wpdb->insert(
 			$table,
 			array(
-				'url'                    => $url,
+				// Store the public frontend URL (not the relative path) so admin links
+				// open the real page on the headless frontend, not the WP backend domain.
+				'url'                    => function_exists( 'ta_citation_public_url' ) ? ta_citation_public_url( $url ) : $url,
 				'post_id'                => $post_id,
 				'post_type'              => $post_type,
 				'post_title'             => $page_title,
@@ -180,7 +198,7 @@ class TA_AJAX_Fallback {
 				'referer_source'         => $platform,
 				'referer_medium'         => 'ai_citation',
 				'detection_method'       => $detection_method,
-				'confidence_score'       => 1.0,
+				'confidence_score'       => $confidence_score,
 				'ip_verified'            => $ip_verified,
 				'ip_verification_method' => $ip_verification_method,
 				'visit_timestamp'        => current_time( 'mysql' ),
@@ -341,7 +359,7 @@ class TA_AJAX_Fallback {
 	 * @return bool True if valid.
 	 */
 	private function validate_platform( $platform ) {
-		$allowed_platforms = array( 'chatgpt', 'perplexity', 'claude', 'gemini', 'copilot', 'bing', 'google' );
+		$allowed_platforms = array( 'chatgpt', 'perplexity', 'claude', 'gemini', 'copilot', 'bing', 'google', 'unknown', 'hidden' );
 		$platform_lower    = strtolower( $platform );
 
 		foreach ( $allowed_platforms as $allowed ) {

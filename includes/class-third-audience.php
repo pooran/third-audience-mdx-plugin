@@ -106,6 +106,7 @@ class Third_Audience {
     public function add_query_vars($vars) {
         $vars[] = 'ta_markdown';
         $vars[] = 'ta_path';
+        $vars[] = 'ta_format';
         return $vars;
     }
 }

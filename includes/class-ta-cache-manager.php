@@ -607,6 +607,21 @@ class TA_Cache_Manager implements TA_Cacheable {
 	}
 
 	/**
+	 * Record a cache hit for a pre-generated (post_meta) markdown serve.
+	 *
+	 * Pre-generated markdown is served directly from post_meta and bypasses
+	 * the tiered get() path, so without this the Hit Rate would read 0% even
+	 * when every request is served from cache. Public so the URL router can
+	 * report these hits.
+	 *
+	 * @since 3.5.7
+	 * @return void
+	 */
+	public function record_pregenerated_hit() {
+		$this->record_hit( 'pre_generated' );
+	}
+
+	/**
 	 * Record a cache miss.
 	 *
 	 * @since 1.2.0
@@ -700,11 +715,10 @@ class TA_Cache_Manager implements TA_Cacheable {
 		$converter = new TA_Local_Converter();
 
 		foreach ( $posts as $post_id ) {
-			$url       = get_permalink( $post_id );
-			$cache_key = $this->generate_key( $url );
+			$url = get_permalink( $post_id );
 
-			// Skip if already cached.
-			if ( $this->has( $cache_key ) ) {
+			// Skip if already pre-generated (permanent post_meta).
+			if ( $this->has_fresh_pre_generated( $post_id ) ) {
 				$results['skipped']++;
 				continue;
 			}
@@ -774,6 +788,12 @@ class TA_Cache_Manager implements TA_Cacheable {
 		if ( is_wp_error( $markdown ) ) {
 			return false;
 		}
+
+		// Persist to permanent post_meta so Coverage and .md serving survive
+		// the 24h transient expiry (mirrors pre_generate_markdown()). This is
+		// what keeps warmed pages at 100% coverage instead of decaying.
+		update_post_meta( $post_id, self::META_MARKDOWN, $markdown );
+		update_post_meta( $post_id, self::META_GENERATED, time() );
 
 		// Cache the result.
 		$cache_key = $this->generate_key( $url );
@@ -1297,13 +1317,13 @@ class TA_Cache_Manager implements TA_Cacheable {
 		// Get all published posts.
 		$all_posts = get_posts( $query_args );
 
-		// Filter out posts that already have cache.
+		// Filter out posts that already have fresh pre-generated markdown.
+		// Coverage is measured against the permanent post_meta layer (not the
+		// 24h transient), so it stays accurate until a post is actually edited
+		// instead of decaying as transients expire.
 		$uncached = array();
 		foreach ( $all_posts as $post_id ) {
-			$url       = $this->normalize_url_to_frontend( get_permalink( $post_id ) );
-			$cache_key = $this->generate_key( $url );
-
-			if ( ! $this->has( $cache_key ) ) {
+			if ( ! $this->has_fresh_pre_generated( $post_id ) ) {
 				$uncached[] = $post_id;
 			}
 		}
@@ -1375,11 +1395,10 @@ class TA_Cache_Manager implements TA_Cacheable {
 		$converter = new TA_Local_Converter();
 
 		foreach ( $uncached_posts as $post_id ) {
-			$url       = $this->normalize_url_to_frontend( get_permalink( $post_id ) );
-			$cache_key = $this->generate_key( $url );
+			$url = $this->normalize_url_to_frontend( get_permalink( $post_id ) );
 
-			// Double-check if already cached (race condition protection).
-			if ( $this->has( $cache_key ) ) {
+			// Double-check if already pre-generated (race condition protection).
+			if ( $this->has_fresh_pre_generated( $post_id ) ) {
 				$results['skipped']++;
 				continue;
 			}

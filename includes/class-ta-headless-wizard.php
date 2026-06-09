@@ -45,10 +45,11 @@ class TA_Headless_Wizard {
 	 */
 	public function get_settings() {
 		$defaults = array(
-			'enabled'      => false,
-			'frontend_url' => '',
-			'framework'    => 'nextjs',
-			'server_type'  => 'nginx',
+			'enabled'         => false,
+			'frontend_url'    => '',
+			'framework'       => 'nextjs',
+			'server_type'     => 'nginx',
+			'bot_md_redirect' => false,
 		);
 
 		$settings = get_option( self::SETTINGS_OPTION, array() );

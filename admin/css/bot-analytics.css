@@ -108,6 +108,7 @@
 	background: #f5f5f7;
 	color: #1d1d1f;
 	border: 1px solid rgba(0, 0, 0, 0.08);
+	white-space: nowrap;
 }
 
 /* === Filters Section === */
@@ -463,6 +464,28 @@
 	color: #007aff;
 }
 
+.ta-content-type-txt,
+.ta-type-txt {
+	background: rgba(52, 199, 89, 0.15);
+	color: #248a3d;
+}
+
+/* Live-feed TYPE badge (JS-rendered) shares the content-type badge styling. */
+.ta-type-badge {
+	display: inline-block;
+	padding: 3px 8px;
+	border-radius: 4px;
+	font-size: 10px;
+	font-weight: 700;
+	text-transform: uppercase;
+	letter-spacing: 0.3px;
+}
+
+.ta-type-md {
+	background: rgba(0, 122, 255, 0.15);
+	color: #007aff;
+}
+
 /* === IP Verification Badges === */
 .ta-ip-verify-badge {
 	display: inline-flex;
@@ -495,6 +518,16 @@
 .ta-ip-failed {
 	background: rgba(255, 59, 48, 0.15);
 	color: #ff3b30;
+}
+
+.ta-ip-known-ua {
+	background: rgba(255, 204, 0, 0.15);
+	color: #b8860b;
+}
+
+.ta-ip-human {
+	background: rgba(10, 132, 255, 0.15);
+	color: #0a84ff;
 }
 
 /* === Location & Response Time === */

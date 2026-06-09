@@ -146,8 +146,12 @@ class TA_Bot_Analytics {
 		// Hook into template_redirect to track AI citation clicks.
 		add_action( 'template_redirect', array( $this, 'maybe_track_citation_click' ), 5 );
 
-		// Hook to track ALL bot crawls on every page.
-		add_action( 'template_redirect', array( $this, 'maybe_track_bot_crawl' ), 1 );
+		// Hook to track ALL bot crawls on every page. Priority 20 so it runs AFTER
+		// the URL router (handle_markdown_request, priority 1): for .md requests the
+		// router serves + exits, so this never double-tracks them; for HTML pages
+		// the router returns early and this records the crawl. (Same priority made
+		// the did_action('ta_bot_visit_tracked') guard ineffective → duplicate rows.)
+		add_action( 'template_redirect', array( $this, 'maybe_track_bot_crawl' ), 20 );
 
 		// Frontend JavaScript citation tracker (works with cached pages).
 		add_action( 'wp_enqueue_scripts', array( $this, 'enqueue_citation_tracker' ) );
@@ -436,6 +440,14 @@ class TA_Bot_Analytics {
 			: '';
 		$is_markdown  = ( substr( $request_uri, -3 ) === '.md' );
 		$content_type = $is_markdown ? 'markdown' : 'html';
+
+		// Do NOT log plain HTML page crawls. This plugin tracks AI markdown/text
+		// consumption (.md / .txt); normal search-engine HTML crawling is noise
+		// that would otherwise inflate the bot-crawl analytics. .md and .txt are
+		// tracked separately by the URL router and never reach this point.
+		if ( 'html' === $content_type ) {
+			return;
+		}
 
 		$post_id    = get_queried_object_id() ?: null;
 		$post_title = $post_id ? get_the_title( $post_id ) : ( ( is_front_page() || is_home() ) ? get_bloginfo( 'name' ) : '' );
@@ -831,7 +843,18 @@ class TA_Bot_Analytics {
 		// phpcs:ignore WordPress.DB.DirectDatabaseQuery
 		$result = $wpdb->query( "TRUNCATE TABLE {$table_name}" );
 
-		$this->logger->info( 'All bot analytics data cleared.' );
+		// Also clear the bot fingerprints/session table — Session Analytics reads
+		// from here, so without this the session metrics keep showing stale counts
+		// after "Clear all visits".
+		$fingerprints_table = $wpdb->prefix . 'ta_bot_fingerprints';
+		// phpcs:ignore WordPress.DB.DirectDatabaseQuery, WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+		$table_exists = $wpdb->get_var( $wpdb->prepare( 'SHOW TABLES LIKE %s', $fingerprints_table ) );
+		if ( $table_exists === $fingerprints_table ) {
+			// phpcs:ignore WordPress.DB.DirectDatabaseQuery
+			$wpdb->query( "TRUNCATE TABLE {$fingerprints_table}" );
+		}
+
+		$this->logger->info( 'All bot analytics data cleared (visits + fingerprints).' );
 
 		return false !== $result;
 	}

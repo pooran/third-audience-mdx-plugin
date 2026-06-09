@@ -360,7 +360,7 @@ class TA_Email_Digest {
 					<tr><th>Page</th><th>Visits</th></tr>
 					<?php foreach ( $data['top_pages'] as $page ) : ?>
 					<tr>
-						<td><?php echo esc_html( $page['post_title'] ?: $page['url'] ); ?></td>
+						<td><?php echo esc_html( ta_page_display_title( $page['post_title'], $page['url'] ) ); ?></td>
 						<td><strong><?php echo number_format( $page['count'] ); ?></strong></td>
 					</tr>
 					<?php endforeach; ?>
@@ -439,7 +439,7 @@ class TA_Email_Digest {
 		$md .= "| Page | Visits |\n";
 		$md .= "|------|--------|\n";
 		foreach ( $data['top_pages'] as $page ) {
-			$title = $page['post_title'] ?: $page['url'];
+			$title = ta_page_display_title( $page['post_title'], $page['url'] );
 			$md .= "| {$title} | {$page['count']} |\n";
 		}
 		$md .= "\n";
@@ -458,7 +458,7 @@ class TA_Email_Digest {
 		foreach ( array_slice( $data['recent_visits'], 0, 50 ) as $visit ) {
 			$time = wp_date( 'Y-m-d H:i', strtotime( $visit['visit_timestamp'] ) );
 			$type = strtoupper( $visit['content_type'] ?: 'HTML' );
-			$title = $visit['post_title'] ?: $visit['url'];
+			$title = ta_page_display_title( $visit['post_title'], $visit['url'] );
 			$md .= "| {$time} | {$visit['bot_name']} | {$title} | {$type} |\n";
 		}
 

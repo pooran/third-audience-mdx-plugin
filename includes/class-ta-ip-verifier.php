@@ -23,49 +23,94 @@ if ( ! defined( 'ABSPATH' ) ) {
 class TA_IP_Verifier {
 
 	/**
-	 * Known bot IP ranges.
+	 * Fallback hardcoded bot IP ranges (used when dynamic fetch fails).
 	 *
 	 * @var array
 	 */
 	private static $bot_ip_ranges = array(
 		'GPTBot'            => array(
-			'23.98.142.0/24',   // OpenAI.
-			'40.84.180.0/22',   // OpenAI Azure.
-			'13.66.11.96/28',   // OpenAI.
+			'23.98.142.0/24',
+			'40.84.180.0/22',
+			'13.66.11.96/28',
 		),
 		'ChatGPT-User'      => array(
-			'23.98.142.0/24',   // OpenAI (shares with GPTBot).
-			'40.84.180.0/22',   // OpenAI Azure.
+			'23.98.142.0/24',
+			'40.84.180.0/22',
+		),
+		'OAI-SearchBot'     => array(
+			'23.98.142.0/24',
+			'40.84.180.0/22',
+			'13.66.11.96/28',
 		),
 		'ClaudeBot'         => array(
-			'3.128.0.0/9',      // Anthropic AWS US-East-2.
-			'52.15.0.0/16',     // Anthropic AWS.
-			'18.216.0.0/14',    // Anthropic AWS.
+			'3.128.0.0/9',
+			'52.15.0.0/16',
+			'18.216.0.0/14',
 		),
 		'PerplexityBot'     => array(
-			'44.214.0.0/16',    // Perplexity AWS.
-			'52.20.0.0/14',     // Perplexity AWS.
+			'44.214.0.0/16',
+			'52.20.0.0/14',
 		),
 		'GoogleBot'         => array(
-			'66.249.64.0/19',   // Google.
-			'66.102.0.0/20',    // Google.
+			'66.249.64.0/19',
+			'66.102.0.0/20',
+		),
+		'Googlebot'         => array(
+			'66.249.64.0/19',
+			'66.102.0.0/20',
 		),
 		'Google-Extended'   => array(
-			'66.249.64.0/19',   // Google (shares with GoogleBot).
-			'66.102.0.0/20',    // Google.
+			'66.249.64.0/19',
+			'66.102.0.0/20',
 		),
 		'Bytespider'        => array(
-			'110.249.0.0/16',   // ByteDance.
-			'111.225.0.0/16',   // ByteDance.
+			'110.249.0.0/16',
+			'111.225.0.0/16',
 		),
 		'FacebookBot'       => array(
-			'69.63.176.0/20',   // Meta.
-			'31.13.24.0/21',    // Meta.
-			'66.220.144.0/20',  // Meta.
+			'69.63.176.0/20',
+			'31.13.24.0/21',
+			'66.220.144.0/20',
 		),
 		'Applebot-Extended' => array(
-			'17.0.0.0/8',       // Apple.
+			'17.0.0.0/8',
 		),
+		'Amazonbot'         => array(), // Verified via reverse DNS only.
+	);
+
+	/**
+	 * Dynamic IP range sources — fetched periodically and cached.
+	 *
+	 * @var array
+	 */
+	private static $dynamic_sources = array(
+		'GoogleBot'     => array(
+			'url'    => 'https://developers.google.com/search/apis/ipranges/googlebot.json',
+			'parser' => 'parse_google_ranges',
+			'bots'   => array( 'GoogleBot', 'Googlebot', 'Google-Extended' ),
+		),
+		'GPTBot'        => array(
+			'url'    => 'https://openai.com/gptbot-ranges.txt',
+			'parser' => 'parse_openai_ranges',
+			'bots'   => array( 'GPTBot', 'ChatGPT-User', 'OAI-SearchBot' ),
+		),
+	);
+
+	/**
+	 * Transient key for cached dynamic ranges.
+	 */
+	const DYNAMIC_RANGES_TRANSIENT = 'ta_dynamic_ip_ranges';
+
+	/**
+	 * Known bot types — used for "Known UA" fallback when IP can't be verified.
+	 *
+	 * @var array
+	 */
+	private static $known_bot_types = array(
+		'ClaudeBot', 'GPTBot', 'ChatGPT-User', 'OAI-SearchBot',
+		'PerplexityBot', 'GoogleBot', 'Googlebot', 'Google-Extended',
+		'Bytespider', 'FacebookBot', 'Applebot-Extended', 'Amazonbot',
+		'anthropic-ai', 'cohere-ai',
 	);
 
 	/**
@@ -76,15 +121,18 @@ class TA_IP_Verifier {
 	private static $hostname_patterns = array(
 		'GPTBot'            => 'openai.com',
 		'ChatGPT-User'      => 'openai.com',
+		'OAI-SearchBot'     => 'openai.com',
 		'ClaudeBot'         => 'anthropic.com',
 		'PerplexityBot'     => 'perplexity.ai',
 		'GoogleBot'         => 'googlebot.com',
+		'Googlebot'         => 'googlebot.com',
 		'Google-Extended'   => 'google.com',
 		'Bytespider'        => 'bytedance.com',
 		'FacebookBot'       => 'facebook.com',
 		'Applebot-Extended' => 'apple.com',
 		'anthropic-ai'      => 'anthropic.com',
 		'cohere-ai'         => 'cohere.ai',
+		'Amazonbot'         => 'amazon.com',
 	);
 
 	/**
@@ -134,6 +182,11 @@ class TA_IP_Verifier {
 	 * @return array Verification result with 'verified' (bool) and 'method' (string).
 	 */
 	public function verify_bot_ip( $bot_type, $ip_address ) {
+		// Citation clicks are human visitors — bot IP verification does not apply.
+		if ( 'AI_Citation' === $bot_type ) {
+			return array( 'verified' => null, 'method' => null );
+		}
+
 		// Check if IP verification is enabled.
 		if ( ! get_option( 'ta_enable_ip_verification', true ) ) {
 			return array(
@@ -161,7 +214,7 @@ class TA_IP_Verifier {
 			return $cached;
 		}
 
-		// Method 1: IP range check (fast, no network call).
+		// Method 1: IP range check — dynamic ranges first, fallback to hardcoded.
 		$range_result = $this->verify_by_ip_range( $bot_type, $ip_address );
 		if ( $range_result ) {
 			$result = array(
@@ -194,13 +247,31 @@ class TA_IP_Verifier {
 			}
 		}
 
-		// Verification could not be performed (IP not in known ranges, DNS lookup failed).
-		// Return NULL instead of FALSE to show "not verified" (-) instead of "failed" (red X).
+		// IP range and reverse DNS both failed.
+		// If the bot type is a known/recognized bot, return 'known_ua' so the UI
+		// can show a warning badge instead of a plain dash.
+		if ( in_array( $bot_type, self::$known_bot_types, true ) ) {
+			$result = array(
+				'verified' => null,
+				'method'   => 'known_ua',
+			);
+			set_transient( $cache_key, $result, HOUR_IN_SECONDS * 6 );
+
+			$this->logger->debug( 'Bot type known but IP unverifiable.', array(
+				'bot_type' => $bot_type,
+				'ip'       => $ip_address,
+				'hostname' => $hostname ?? 'N/A',
+			) );
+
+			return $result;
+		}
+
+		// Completely unknown bot type — no status to show.
 		$result = array(
 			'verified' => null,
 			'method'   => null,
 		);
-		set_transient( $cache_key, $result, HOUR_IN_SECONDS * 6 ); // Cache failures shorter.
+		set_transient( $cache_key, $result, HOUR_IN_SECONDS * 6 );
 
 		$this->logger->debug( 'Bot IP verification could not be performed (unknown IP range).', array(
 			'bot_type' => $bot_type,
@@ -214,7 +285,7 @@ class TA_IP_Verifier {
 	/**
 	 * Verify by IP range.
 	 *
-	 * Checks if IP is within known bot IP ranges.
+	 * Checks dynamic (cached) ranges first, falls back to hardcoded ranges.
 	 *
 	 * @since 2.7.0
 	 * @param string $bot_type   Bot type.
@@ -222,6 +293,17 @@ class TA_IP_Verifier {
 	 * @return bool True if IP is in range, false otherwise.
 	 */
 	private function verify_by_ip_range( $bot_type, $ip_address ) {
+		// Try dynamic ranges first.
+		$dynamic = get_transient( self::DYNAMIC_RANGES_TRANSIENT );
+		if ( is_array( $dynamic ) && isset( $dynamic[ $bot_type ] ) ) {
+			foreach ( $dynamic[ $bot_type ] as $cidr_range ) {
+				if ( $this->ip_in_range( $ip_address, $cidr_range ) ) {
+					return true;
+				}
+			}
+		}
+
+		// Fall back to hardcoded ranges.
 		if ( ! isset( self::$bot_ip_ranges[ $bot_type ] ) ) {
 			return false;
 		}
@@ -334,5 +416,124 @@ class TA_IP_Verifier {
 	 */
 	public function get_custom_ip_ranges() {
 		return get_option( 'ta_custom_bot_ip_ranges', array() );
+	}
+
+	/**
+	 * Fetch dynamic IP ranges from official sources and cache them.
+	 *
+	 * Called by daily cron. Fetches Google and OpenAI published ranges.
+	 * On failure, existing cached ranges (or hardcoded fallbacks) are used.
+	 *
+	 * @since 2.8.0
+	 * @return array Summary of fetch results per source.
+	 */
+	public function fetch_dynamic_ranges() {
+		$results       = array();
+		$merged_ranges = array();
+
+		foreach ( self::$dynamic_sources as $source_key => $source ) {
+			$response = wp_remote_get( $source['url'], array(
+				'timeout'    => 10,
+				'user-agent' => 'Third Audience Plugin/' . TA_VERSION,
+			) );
+
+			if ( is_wp_error( $response ) || 200 !== wp_remote_retrieve_response_code( $response ) ) {
+				$results[ $source_key ] = 'fetch_failed';
+				continue;
+			}
+
+			$body   = wp_remote_retrieve_body( $response );
+			$ranges = $this->{$source['parser']}( $body );
+
+			if ( empty( $ranges ) ) {
+				$results[ $source_key ] = 'parse_failed';
+				continue;
+			}
+
+			// Assign the same ranges to all bots that share this source.
+			foreach ( $source['bots'] as $bot_type ) {
+				$merged_ranges[ $bot_type ] = $ranges;
+			}
+
+			$results[ $source_key ] = count( $ranges ) . ' ranges fetched';
+		}
+
+		// Only update cache if at least one source succeeded.
+		if ( ! empty( $merged_ranges ) ) {
+			// Merge with existing cached data so a partial failure doesn't wipe good data.
+			$existing = get_transient( self::DYNAMIC_RANGES_TRANSIENT );
+			if ( is_array( $existing ) ) {
+				$merged_ranges = array_merge( $existing, $merged_ranges );
+			}
+
+			set_transient( self::DYNAMIC_RANGES_TRANSIENT, $merged_ranges, DAY_IN_SECONDS );
+
+			$this->logger->info( 'Dynamic IP ranges updated.', $results );
+		}
+
+		return $results;
+	}
+
+	/**
+	 * Parse Google's Googlebot IP ranges JSON.
+	 *
+	 * Format: {"prefixes":[{"ipv4Prefix":"x.x.x.x/y"},{"ipv6Prefix":"..."},...]}
+	 *
+	 * @since 2.8.0
+	 * @param string $body Response body.
+	 * @return array Array of CIDR ranges (IPv4 only).
+	 */
+	private function parse_google_ranges( $body ) {
+		$data = json_decode( $body, true );
+		if ( empty( $data['prefixes'] ) ) {
+			return array();
+		}
+
+		$ranges = array();
+		foreach ( $data['prefixes'] as $prefix ) {
+			if ( isset( $prefix['ipv4Prefix'] ) ) {
+				$ranges[] = $prefix['ipv4Prefix'];
+			}
+		}
+
+		return $ranges;
+	}
+
+	/**
+	 * Parse OpenAI's GPTBot IP ranges text file.
+	 *
+	 * Format: plain text, one CIDR per line, lines starting with # are comments.
+	 *
+	 * @since 2.8.0
+	 * @param string $body Response body.
+	 * @return array Array of CIDR ranges.
+	 */
+	private function parse_openai_ranges( $body ) {
+		$ranges = array();
+		$lines  = explode( "\n", $body );
+
+		foreach ( $lines as $line ) {
+			$line = trim( $line );
+			// Skip empty lines and comments.
+			if ( empty( $line ) || '#' === $line[0] ) {
+				continue;
+			}
+			// Basic CIDR format validation.
+			if ( strpos( $line, '/' ) !== false ) {
+				$ranges[] = $line;
+			}
+		}
+
+		return $ranges;
+	}
+
+	/**
+	 * Get the cached dynamic ranges (for admin display).
+	 *
+	 * @since 2.8.0
+	 * @return array|false Cached ranges or false if not fetched yet.
+	 */
+	public function get_dynamic_ranges() {
+		return get_transient( self::DYNAMIC_RANGES_TRANSIENT );
 	}
 }

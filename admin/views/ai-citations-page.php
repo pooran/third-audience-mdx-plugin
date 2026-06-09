@@ -722,9 +722,9 @@ $available_dates = $wpdb->get_results(
 				<span class="dashicons dashicons-search"></span>
 			</div>
 			<div class="ta-hero-content">
-				<div class="ta-hero-label"><?php esc_html_e( 'Perplexity Queries', 'third-audience' ); ?></div>
+				<div class="ta-hero-label"><?php esc_html_e( 'Search Queries', 'third-audience' ); ?></div>
 				<div class="ta-hero-value"><?php echo number_format( $perplexity_queries ); ?></div>
-				<div class="ta-hero-meta">Captured search queries</div>
+				<div class="ta-hero-meta"><?php esc_html_e( 'Captured from Perplexity', 'third-audience' ); ?></div>
 			</div>
 		</div>
 
@@ -738,10 +738,10 @@ $available_dates = $wpdb->get_results(
 				<div class="ta-hero-meta">
 					<?php
 					printf(
-						// translators: %1$s = citation clicks, %2$s = total AI interactions.
-						esc_html__( '%1$s clicks of %2$s AI interactions', 'third-audience' ),
+						// translators: %1$s = citation clicks (humans), %2$s = bot crawls.
+						esc_html__( '%1$s human clicks vs %2$s bot crawls', 'third-audience' ),
 						'<strong>' . number_format( $total_citations ) . '</strong>',
-						'<strong>' . number_format( $total_citations + $total_crawls ) . '</strong>'
+						'<strong>' . number_format( $total_crawls ) . '</strong>'
 					);
 					?>
 				</div>
@@ -749,6 +749,121 @@ $available_dates = $wpdb->get_results(
 		</div>
 
 	</div>
+
+	<!-- Recent LLMs Visits -->
+	<?php if ( ! empty( $recent_citations ) ) : ?>
+		<div class="ta-card" style="margin-top: 20px;">
+			<div class="ta-card-header">
+				<h2><?php esc_html_e( 'Recent LLMs Visits', 'third-audience' ); ?></h2>
+				<p class="description" style="margin-top: 8px;">
+					<?php esc_html_e( 'All recent LLM visits from AI platforms with timing and referrer details.', 'third-audience' ); ?>
+				</p>
+			</div>
+			<div class="ta-card-body" style="overflow-x: auto;">
+				<table class="wp-list-table widefat fixed striped" style="min-width: 900px;">
+					<thead>
+						<tr>
+							<th style="width: 160px;"><?php esc_html_e( 'Platform', 'third-audience' ); ?></th>
+							<th style="width: 180px;"><?php esc_html_e( 'Page', 'third-audience' ); ?></th>
+							<th style="width: 180px;">🌐 <?php esc_html_e( 'Browser & Device', 'third-audience' ); ?></th>
+							<th style="width: 70px; text-align: center;">🗺️ <?php esc_html_e( 'Location', 'third-audience' ); ?></th>
+							<th style="width: 90px; text-align: center;"><?php esc_html_e( 'Date', 'third-audience' ); ?></th>
+							<th style="width: 75px; text-align: center;"><?php esc_html_e( 'Time', 'third-audience' ); ?></th>
+							<th style="width: 65px; text-align: center;"><?php esc_html_e( 'Ago', 'third-audience' ); ?></th>
+							<th><?php esc_html_e( 'Referrer', 'third-audience' ); ?></th>
+						</tr>
+					</thead>
+					<tbody>
+						<?php foreach ( $recent_citations as $citation ) : ?>
+							<?php
+							$ts = strtotime( $citation['visit_timestamp'] );
+							$time_ago   = human_time_diff( $ts, current_time( 'timestamp' ) );
+							$short_url  = strlen( $citation['url'] ) > 30 ? substr( $citation['url'], 0, 27 ) . '...' : $citation['url'];
+							$short_ref  = ! empty( $citation['referer'] ) ? ( strlen( $citation['referer'] ) > 35 ? substr( $citation['referer'], 0, 32 ) . '...' : $citation['referer'] ) : '—';
+
+							// Prefer client_user_agent (real browser UA from JS navigator.userAgent)
+							// over user_agent (server-side HTTP_USER_AGENT, may be a bot/proxy UA).
+							$ua_string    = ! empty( $citation['client_user_agent'] ) ? $citation['client_user_agent'] : ( $citation['user_agent'] ?? '' );
+							$ua_data      = ta_parse_user_agent( $ua_string );
+							$content_type = $citation['content_type'] ?? '';
+
+							// NEW: Get country flag
+							$country_flag = ta_get_country_flag( $citation['country_code'] ?? '' );
+							?>
+							<tr>
+								<td><span class="ta-bot-badge" style="white-space: normal; word-break: break-word;"><?php echo esc_html( $citation['ai_platform'] ); ?></span></td>
+								<?php
+								$display_title   = ! empty( $citation['post_title'] )
+									? $citation['post_title']
+									: ta_format_url_as_title( $citation['url'] );
+								$is_broken_title = empty( $citation['post_title'] );
+								?>
+								<td title="<?php echo esc_attr( $citation['url'] ); ?>">
+									<strong style="font-size: 12px;">
+										<?php echo esc_html( $display_title ); ?>
+										<?php if ( $is_broken_title ) : ?>
+											<span title="No matching WordPress page found — may need a redirect" style="color: #f59e0b; font-size: 9px; font-weight: normal; margin-left: 3px;">&#9888;</span>
+										<?php endif; ?>
+									</strong>
+									<br><code style="font-size: 9px; color: #8e8e93;"><?php echo esc_html( $short_url ); ?></code>
+								</td>
+								<!-- Browser & Device Column -->
+								<td style="font-size: 11px;">
+									<?php if ( ! empty( $citation['client_user_agent'] ) ) : ?>
+										<div style="line-height: 1.4;">
+											<strong><?php echo esc_html( 'Unknown' !== $ua_data['browser'] ? $ua_data['browser'] : 'Browser' ); ?></strong> on <?php echo esc_html( 'Unknown' !== $ua_data['os'] ? $ua_data['os'] : 'Unknown OS' ); ?>
+											<br>
+											<span style="color: #8e8e93; font-size: 10px;">
+												<?php echo esc_html( $ua_data['icon'] ); ?> <?php echo esc_html( ucfirst( $ua_data['device'] ) ); ?>
+											</span>
+										</div>
+									<?php elseif ( in_array( $content_type, array( 'rest_api', 'ajax' ), true ) ) : ?>
+										<div style="line-height: 1.4;">
+											<strong style="color: #8b5cf6;">Headless</strong>
+											<br>
+											<span style="color: #8e8e93; font-size: 10px;">&#x1F5A5; Next.js server</span>
+										</div>
+									<?php elseif ( 'graphql' === $content_type ) : ?>
+										<div style="line-height: 1.4;">
+											<strong style="color: #059669;">GraphQL</strong>
+											<br>
+											<span style="color: #8e8e93; font-size: 10px;">&#x1F5A5; API call</span>
+										</div>
+									<?php elseif ( 'Unknown' === $ua_data['browser'] && 'Unknown' === $ua_data['os'] ) : ?>
+										<span style="color: #d1d1d6; font-size: 11px;">&#8212;</span>
+									<?php else : ?>
+										<div style="line-height: 1.4;">
+											<strong><?php echo esc_html( $ua_data['browser'] ); ?></strong> on <?php echo esc_html( $ua_data['os'] ); ?>
+											<br>
+											<span style="color: #8e8e93; font-size: 10px;">
+												<?php echo esc_html( $ua_data['icon'] ); ?> <?php echo esc_html( ucfirst( $ua_data['device'] ) ); ?>
+											</span>
+										</div>
+									<?php endif; ?>
+								</td>
+
+								<!-- NEW: Location Column -->
+								<td style="text-align: center; font-size: 14px;" title="<?php echo esc_attr( $citation['country_code'] ?: 'Unknown' ); ?>">
+									<?php if ( ! empty( $country_flag ) ) : ?>
+										<?php echo $country_flag; ?> <span style="font-size: 11px; color: #646970;"><?php echo esc_html( $citation['country_code'] ); ?></span>
+									<?php else : ?>
+										<span style="color: #d1d1d6; font-size: 11px;">—</span>
+									<?php endif; ?>
+								</td>
+
+								<td style="text-align: center; font-size: 11px;"><?php echo esc_html( gmdate( 'M j, Y', $ts ) ); ?></td>
+								<td style="text-align: center; font-size: 11px; color: #646970;"><?php echo esc_html( gmdate( 'g:i A', $ts ) ); ?></td>
+								<td style="text-align: center; font-size: 10px; color: #8e8e93;"><?php echo esc_html( $time_ago ); ?></td>
+								<td style="font-size: 10px; color: #8e8e93;" title="<?php echo esc_attr( $citation['referer'] ); ?>">
+									<?php echo esc_html( $short_ref ); ?>
+								</td>
+							</tr>
+						<?php endforeach; ?>
+					</tbody>
+				</table>
+			</div>
+		</div>
+	<?php endif; ?>
 
 	<!-- LLM Traffic -->
 	<?php if ( ! empty( $top_cited_pages ) ) : ?>
@@ -782,7 +897,7 @@ $available_dates = $wpdb->get_results(
 							?>
 							<tr>
 								<td>
-									<strong style="font-size: 13px;"><?php echo esc_html( $page['post_title'] ?: 'Untitled' ); ?></strong>
+									<strong style="font-size: 13px;"><?php echo esc_html( ta_page_display_title( $page['post_title'], $page['url'] ) ); ?></strong>
 									<br><code style="font-size: 10px; color: #8e8e93;"><?php echo esc_html( $short_url ); ?></code>
 								</td>
 								<td style="text-align: center;"><strong style="font-size: 14px;"><?php echo number_format( $page['citation_count'] ); ?></strong></td>
@@ -864,121 +979,6 @@ $available_dates = $wpdb->get_results(
 		</div>
 
 	</div>
-
-	<!-- Recent LLMs Visits -->
-	<?php if ( ! empty( $recent_citations ) ) : ?>
-		<div class="ta-card" style="margin-top: 20px;">
-			<div class="ta-card-header">
-				<h2><?php esc_html_e( 'Recent LLMs Visits', 'third-audience' ); ?></h2>
-				<p class="description" style="margin-top: 8px;">
-					<?php esc_html_e( 'All recent LLM visits from AI platforms with timing and referrer details.', 'third-audience' ); ?>
-				</p>
-			</div>
-			<div class="ta-card-body" style="overflow-x: auto;">
-				<table class="wp-list-table widefat fixed striped" style="min-width: 900px;">
-					<thead>
-						<tr>
-							<th style="width: 90px;"><?php esc_html_e( 'Platform', 'third-audience' ); ?></th>
-							<th style="width: 180px;"><?php esc_html_e( 'Page', 'third-audience' ); ?></th>
-							<th style="width: 180px;">🌐 <?php esc_html_e( 'Browser & Device', 'third-audience' ); ?></th>
-							<th style="width: 70px; text-align: center;">🗺️ <?php esc_html_e( 'Location', 'third-audience' ); ?></th>
-							<th style="width: 90px; text-align: center;"><?php esc_html_e( 'Date', 'third-audience' ); ?></th>
-							<th style="width: 75px; text-align: center;"><?php esc_html_e( 'Time', 'third-audience' ); ?></th>
-							<th style="width: 65px; text-align: center;"><?php esc_html_e( 'Ago', 'third-audience' ); ?></th>
-							<th><?php esc_html_e( 'Referrer', 'third-audience' ); ?></th>
-						</tr>
-					</thead>
-					<tbody>
-						<?php foreach ( $recent_citations as $citation ) : ?>
-							<?php
-							$ts = strtotime( $citation['visit_timestamp'] );
-							$time_ago   = human_time_diff( $ts, current_time( 'timestamp' ) );
-							$short_url  = strlen( $citation['url'] ) > 30 ? substr( $citation['url'], 0, 27 ) . '...' : $citation['url'];
-							$short_ref  = ! empty( $citation['referer'] ) ? ( strlen( $citation['referer'] ) > 35 ? substr( $citation['referer'], 0, 32 ) . '...' : $citation['referer'] ) : '—';
-
-							// Prefer client_user_agent (real browser UA from JS navigator.userAgent)
-							// over user_agent (server-side HTTP_USER_AGENT, may be a bot/proxy UA).
-							$ua_string    = ! empty( $citation['client_user_agent'] ) ? $citation['client_user_agent'] : ( $citation['user_agent'] ?? '' );
-							$ua_data      = ta_parse_user_agent( $ua_string );
-							$content_type = $citation['content_type'] ?? '';
-
-							// NEW: Get country flag
-							$country_flag = ta_get_country_flag( $citation['country_code'] ?? '' );
-							?>
-							<tr>
-								<td><span class="ta-bot-badge"><?php echo esc_html( $citation['ai_platform'] ); ?></span></td>
-								<?php
-								$display_title   = ! empty( $citation['post_title'] )
-									? $citation['post_title']
-									: ta_format_url_as_title( $citation['url'] );
-								$is_broken_title = empty( $citation['post_title'] );
-								?>
-								<td title="<?php echo esc_attr( $citation['url'] ); ?>">
-									<strong style="font-size: 12px;">
-										<?php echo esc_html( $display_title ); ?>
-										<?php if ( $is_broken_title ) : ?>
-											<span title="No matching WordPress page found — may need a redirect" style="color: #f59e0b; font-size: 9px; font-weight: normal; margin-left: 3px;">&#9888;</span>
-										<?php endif; ?>
-									</strong>
-									<br><code style="font-size: 9px; color: #8e8e93;"><?php echo esc_html( $short_url ); ?></code>
-								</td>
-								<!-- Browser & Device Column -->
-								<td style="font-size: 11px;">
-									<?php if ( ! empty( $citation['client_user_agent'] ) ) : ?>
-										<div style="line-height: 1.4;">
-											<strong><?php echo esc_html( 'Unknown' !== $ua_data['browser'] ? $ua_data['browser'] : 'Browser' ); ?></strong> on <?php echo esc_html( 'Unknown' !== $ua_data['os'] ? $ua_data['os'] : 'Unknown OS' ); ?>
-											<br>
-											<span style="color: #8e8e93; font-size: 10px;">
-												<?php echo esc_html( $ua_data['icon'] ); ?> <?php echo esc_html( ucfirst( $ua_data['device'] ) ); ?>
-											</span>
-										</div>
-									<?php elseif ( in_array( $content_type, array( 'rest_api', 'ajax' ), true ) ) : ?>
-										<div style="line-height: 1.4;">
-											<strong style="color: #8b5cf6;">Headless</strong>
-											<br>
-											<span style="color: #8e8e93; font-size: 10px;">&#x1F5A5; Next.js server</span>
-										</div>
-									<?php elseif ( 'graphql' === $content_type ) : ?>
-										<div style="line-height: 1.4;">
-											<strong style="color: #059669;">GraphQL</strong>
-											<br>
-											<span style="color: #8e8e93; font-size: 10px;">&#x1F5A5; API call</span>
-										</div>
-									<?php elseif ( 'Unknown' === $ua_data['browser'] && 'Unknown' === $ua_data['os'] ) : ?>
-										<span style="color: #d1d1d6; font-size: 11px;">&#8212;</span>
-									<?php else : ?>
-										<div style="line-height: 1.4;">
-											<strong><?php echo esc_html( $ua_data['browser'] ); ?></strong> on <?php echo esc_html( $ua_data['os'] ); ?>
-											<br>
-											<span style="color: #8e8e93; font-size: 10px;">
-												<?php echo esc_html( $ua_data['icon'] ); ?> <?php echo esc_html( ucfirst( $ua_data['device'] ) ); ?>
-											</span>
-										</div>
-									<?php endif; ?>
-								</td>
-
-								<!-- NEW: Location Column -->
-								<td style="text-align: center; font-size: 14px;" title="<?php echo esc_attr( $citation['country_code'] ?: 'Unknown' ); ?>">
-									<?php if ( ! empty( $country_flag ) ) : ?>
-										<?php echo $country_flag; ?> <span style="font-size: 11px; color: #646970;"><?php echo esc_html( $citation['country_code'] ); ?></span>
-									<?php else : ?>
-										<span style="color: #d1d1d6; font-size: 11px;">—</span>
-									<?php endif; ?>
-								</td>
-
-								<td style="text-align: center; font-size: 11px;"><?php echo esc_html( gmdate( 'M j, Y', $ts ) ); ?></td>
-								<td style="text-align: center; font-size: 11px; color: #646970;"><?php echo esc_html( gmdate( 'g:i A', $ts ) ); ?></td>
-								<td style="text-align: center; font-size: 10px; color: #8e8e93;"><?php echo esc_html( $time_ago ); ?></td>
-								<td style="font-size: 10px; color: #8e8e93;" title="<?php echo esc_attr( $citation['referer'] ); ?>">
-									<?php echo esc_html( $short_ref ); ?>
-								</td>
-							</tr>
-						<?php endforeach; ?>
-					</tbody>
-				</table>
-			</div>
-		</div>
-	<?php endif; ?>
 
 	<!-- Filters (Collapsible) -->
 	<div class="ta-filters-section">
@@ -1102,7 +1102,7 @@ $available_dates = $wpdb->get_results(
 						<?php
 						$broken_slug  = basename( trim( wp_parse_url( $broken['url'], PHP_URL_PATH ), '/' ) );
 						$broken_title = ucwords( str_replace( array( '-', '_' ), ' ', $broken_slug ) ) ?: 'Unknown Page';
-						$full_url     = home_url( $broken['url'] );
+						$full_url     = ta_citation_public_url( $broken['url'] );
 						$last_seen    = human_time_diff( strtotime( $broken['last_seen'] ), current_time( 'timestamp' ) );
 						?>
 						<tr>
@@ -1224,7 +1224,7 @@ $available_dates = $wpdb->get_results(
 										</span>
 									</td>
 									<td style="font-size: 11px; color: #646970;" title="<?php echo esc_attr( $q['url'] ); ?>">
-										<?php echo esc_html( $q['post_title'] ?: basename( rtrim( $q['url'], '/' ) ) ?: 'Homepage' ); ?>
+										<?php echo esc_html( ta_page_display_title( $q['post_title'], $q['url'] ) ); ?>
 									</td>
 								</tr>
 							<?php endforeach; ?>

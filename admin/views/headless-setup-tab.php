@@ -135,6 +135,31 @@ $api_key  = $wizard->get_api_key();
 					</p>
 				</td>
 			</tr>
+
+			<!-- Serve markdown to AI bots -->
+			<tr>
+				<th scope="row">
+					<?php esc_html_e( 'AI Bots → Markdown / Text', 'third-audience' ); ?>
+				</th>
+				<td>
+					<label>
+						<input type="checkbox" id="ta_headless_bot_md_redirect" name="ta_headless_bot_md_redirect" value="1"
+							<?php checked( ! empty( $settings['bot_md_redirect'] ) ); ?> />
+						<?php esc_html_e( 'Serve the markdown (.md) / text (.txt) version to AI crawlers', 'third-audience' ); ?>
+					</label>
+					<p class="description">
+						<?php esc_html_e( 'When enabled, the frontend middleware redirects detected AI bots (GPTBot, ClaudeBot, PerplexityBot, etc.) to the .md version. Both .md and .txt serve the same content (.txt is for crawlers that prefer plain text). Search engines (Googlebot/Bingbot) and human visitors always get the normal HTML page.', 'third-audience' ); ?>
+					</p>
+					<p class="description" style="margin-top: 8px;">
+						<strong><?php esc_html_e( 'Frontend (Next.js) requirement:', 'third-audience' ); ?></strong>
+						<?php esc_html_e( 'For .md and .txt to serve on the frontend domain, add these rewrites to next.config.js so they proxy to this WordPress backend:', 'third-audience' ); ?>
+					</p>
+					<pre style="background:#1e1e1e;color:#d4d4d4;padding:12px;border-radius:6px;font-size:12px;overflow-x:auto;margin:6px 0 0 0;"><code>rewrites: async () =&gt; [
+  { source: '/:path*.md',  destination: `${process.env.WORDPRESS_BASE_URL}/:path*.md` },
+  { source: '/:path*.txt', destination: `${process.env.WORDPRESS_BASE_URL}/:path*.txt` },
+]</code></pre>
+				</td>
+			</tr>
 		</table>
 
 		<?php submit_button( __( 'Save Headless Settings', 'third-audience' ) ); ?>
@@ -297,6 +322,29 @@ function detectAICitation(request: NextRequest): { platform: string; query?: str
       }
       return { platform: source.name, detection_type: 'referer' };
     }
+  }
+
+  // Fallback: cross-site navigation with NO referer and NO utm.
+  // Privacy-strict sources like claude.ai (Referrer-Policy: same-origin) strip the
+  // referer entirely, but the browser still sends Sec-Fetch-Site: cross-site (this
+  // header is not affected by Referrer-Policy). Captures those hidden-referrer
+  // clicks (mostly Claude) instead of losing them to "direct".
+  const secFetchSite = request.headers.get('sec-fetch-site') || '';
+  const secFetchMode = request.headers.get('sec-fetch-mode') || '';
+  const secFetchDest = request.headers.get('sec-fetch-dest') || '';
+  const isContentPath =
+    !/\.[a-z0-9]+$/i.test(url.pathname) &&
+    !url.pathname.startsWith('/_next') &&
+    !url.pathname.startsWith('/api');
+  if (
+    !referer &&
+    !utmSource &&
+    secFetchSite === 'cross-site' &&
+    secFetchMode === 'navigate' &&
+    secFetchDest === 'document' &&
+    isContentPath
+  ) {
+    return { platform: 'Unknown', detection_type: 'sec_fetch' };
   }
 
   return null;
