@@ -1,6 +1,6 @@
 {
   "name": "third-audience-mdx",
-  "version": "1.0.0",
+  "version": "1.0.3",
   "description": "Serve AI-optimized Markdown to LLM crawlers from MDX content sites. Track bot visits, citations, and AI discoverability.",
   "main": "dist/index.js",
   "module": "dist/index.mjs",
@@ -91,6 +91,16 @@
       "import": "./dist/dashboard/ui/pages/SystemHealthPage.mjs",
       "require": "./dist/dashboard/ui/pages/SystemHealthPage.js",
       "types": "./dist/dashboard/ui/pages/SystemHealthPage.d.ts"
+    },
+    "./dashboard/ui/pages/OkfPage": {
+      "import": "./dist/dashboard/ui/pages/OkfPage.mjs",
+      "require": "./dist/dashboard/ui/pages/OkfPage.js",
+      "types": "./dist/dashboard/ui/pages/OkfPage.d.ts"
+    },
+    "./routes/okf-graph": {
+      "import": "./dist/dashboard/routes/okf-graph-route.mjs",
+      "require": "./dist/dashboard/routes/okf-graph-route.js",
+      "types": "./dist/dashboard/routes/okf-graph-route.d.ts"
     }
   },
   "bin": {
@@ -103,7 +113,15 @@
     "test": "vitest run",
     "test:watch": "vitest"
   },
-  "keywords": ["mdx", "ai", "llm", "markdown", "next.js", "crawler", "analytics"],
+  "keywords": [
+    "mdx",
+    "ai",
+    "llm",
+    "markdown",
+    "next.js",
+    "crawler",
+    "analytics"
+  ],
   "license": "GPL-2.0-or-later",
   "peerDependencies": {
     "next": ">=13.0.0",

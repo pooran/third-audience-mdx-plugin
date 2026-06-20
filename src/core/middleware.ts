@@ -1,43 +1,37 @@
 import { NextResponse, type NextRequest } from 'next/server'
-import { verifySession } from '../dashboard/admin-store.js'
 
 const COOKIE_NAME = 'ta_session'
 const RESET_COOKIE = 'ta_session_reset'
 
 /**
- * Third Audience middleware.
+ * Third Audience middleware — Edge-runtime compatible (no Node.js crypto).
  *
- * Handles:
- * - Dashboard auth: /third-audience/* requires valid session cookie
- * - .md URL requests → serve Markdown of matching MDX file
- * - Accept: text/markdown header → serve Markdown of current page
- * - Bot visit tracking (non-blocking, fire-and-forget)
- * - Citation detection via Referer header
+ * Auth guard uses cookie presence only; HMAC verification happens in the
+ * route handler (Node.js runtime) where crypto is available.
  *
  * Wire up in middleware.ts:
  *   export { thirdAudienceMiddleware as middleware } from 'third-audience-mdx'
  *   export const config = { matcher: ['/((?!_next|api).*)'] }
  */
-export async function thirdAudienceMiddleware(req: NextRequest): Promise<NextResponse> {
+export function thirdAudienceMiddleware(req: NextRequest): NextResponse | null {
   const { pathname } = req.nextUrl
   const accept = req.headers.get('accept') ?? ''
 
-  // Dashboard auth guard — all /third-audience/* except /login
+  // Dashboard auth guard — cookie presence check (HMAC verified in route handler)
   if (pathname.startsWith('/third-audience') && !pathname.startsWith('/third-audience/login')) {
     const session = req.cookies.get(COOKIE_NAME)?.value
-    if (!session || !verifySession(session)) {
+    if (!session) {
       const loginUrl = req.nextUrl.clone()
       loginUrl.pathname = '/third-audience/login'
       return NextResponse.redirect(loginUrl)
     }
   }
 
-  // Password reset guard — /third-audience/login?reset=1 requires reset cookie
+  // Password reset guard — /third-audience/login?reset=1 requires reset or session cookie
   if (pathname === '/third-audience/login' && req.nextUrl.searchParams.get('reset') === '1') {
     const resetCookie = req.cookies.get(RESET_COOKIE)?.value
     const sessionCookie = req.cookies.get(COOKIE_NAME)?.value
-    // Allow if they have either a valid session or a valid reset token
-    if ((!resetCookie || !verifySession(resetCookie)) && (!sessionCookie || !verifySession(sessionCookie))) {
+    if (!resetCookie && !sessionCookie) {
       const loginUrl = req.nextUrl.clone()
       loginUrl.pathname = '/third-audience/login'
       loginUrl.search = ''
@@ -67,10 +61,12 @@ export async function thirdAudienceMiddleware(req: NextRequest): Promise<NextRes
     return NextResponse.rewrite(url)
   }
 
-  // /okf/ → rewrite to OKF bundle handler
+  // /okf or /okf/* → rewrite to OKF bundle handler
+  // [...path] catch-all requires at least one segment, so /okf → /okf/index
   if (pathname.startsWith('/okf')) {
     const url = req.nextUrl.clone()
-    url.pathname = `/api/third-audience/okf${pathname.slice(4)}`
+    const rest = pathname.slice(4) // '' or '/something'
+    url.pathname = `/api/third-audience/okf${rest || '/index'}`
     return NextResponse.rewrite(url)
   }
 
@@ -88,18 +84,7 @@ export async function thirdAudienceMiddleware(req: NextRequest): Promise<NextRes
     return NextResponse.rewrite(url)
   }
 
-  const response = NextResponse.next()
-
-  // Fire-and-forget: track bot visits and citations (non-blocking)
-  trackVisitAsync(req)
-
-  return response
+  // No match — let the caller's middleware chain continue
+  return null
 }
 
-function trackVisitAsync(req: NextRequest): void {
-  // Dynamically import to avoid loading analytics on every request sync path.
-  // Uses void to intentionally not await — tracking must never block response.
-  void import('../analytics/visit-tracker.js').then(({ VisitTracker }) => {
-    VisitTracker.getInstance().record(req)
-  }).catch(() => { /* never throw from tracking */ })
-}

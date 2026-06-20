@@ -16,6 +16,7 @@ export default defineConfig({
     'src/dashboard/ui/pages/BotManagementPage.tsx',
     'src/dashboard/ui/pages/SettingsPage.tsx',
     'src/dashboard/ui/pages/SystemHealthPage.tsx',
+    'src/dashboard/ui/pages/OkfPage.tsx',
   ],
   format: ['cjs', 'esm'],
   dts: true,

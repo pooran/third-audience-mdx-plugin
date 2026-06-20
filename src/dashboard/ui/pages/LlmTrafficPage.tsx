@@ -43,7 +43,7 @@ export async function LlmTrafficPage() {
 
   const byPlatform = groupBy(records, r => r.platform)
   const byPage = groupBy(records, r => r.url)
-  const byCountry = groupBy(records, r => r.country ?? 'Unknown').slice(0, 10)
+  const byQuery = groupBy(records.filter(r => r.query), r => r.query!).slice(0, 10)
 
   return (
     <div>
@@ -105,17 +105,17 @@ export async function LlmTrafficPage() {
           )}
         </Card>
 
-        <Card title="By Country">
-          {byCountry.length === 0 ? (
-            <div className="ta-empty"><p>No country data yet.</p></div>
+        <Card title="Top Queries">
+          {byQuery.length === 0 ? (
+            <div className="ta-empty"><p>No query data yet. Queries are captured when AI platforms include a search term in the referrer URL.</p></div>
           ) : (
             <table className="ta-table">
-              <thead><tr><th>Country</th><th>Citations</th></tr></thead>
+              <thead><tr><th>Query</th><th>Citations</th></tr></thead>
               <tbody>
-                {byCountry.map(c => (
-                  <tr key={c.name}>
-                    <td>{c.name}</td>
-                    <td><strong>{c.count}</strong></td>
+                {byQuery.map(q => (
+                  <tr key={q.name}>
+                    <td style={{ fontFamily: 'var(--ta-font-mono)', fontSize: 12 }}>{q.name}</td>
+                    <td><strong>{q.count}</strong></td>
                   </tr>
                 ))}
               </tbody>

@@ -1,0 +1,45 @@
+# WordPress plugin files (from merged history — not part of the npm package)
+admin/
+includes/
+public/
+tests/
+vendor/
+third-audience.php
+uninstall.php
+composer.json
+composer.lock
+phpunit.xml
+
+# WordPress docs
+ABOUT.md
+AUTO-DEPLOYMENT.md
+BROWSER-TESTING.md
+CHANGELOG.md
+HEADLESS-SETUP.md
+QUICK-TEST.md
+TESTING-GUIDE.md
+
+# Source (compiled to dist/ for publishing)
+src/
+
+# Explicitly include dist/ (negates .gitignore which excludes it)
+!dist/
+
+# Dev / build
+tsup.config.ts
+tsconfig.json
+.gitignore
+
+# Plugin (Claude Code / Codex / Cursor skills — not needed at runtime)
+plugin/
+
+# Docs
+docs/
+
+# Data (local analytics storage)
+data/
+
+# Logs and editor files
+*.log
+.DS_Store
+node_modules/

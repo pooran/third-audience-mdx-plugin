@@ -16,8 +16,8 @@ export async function GET(req: NextRequest, { params }: { params: { path?: strin
   const allFiles = reader.readAll()
   const segments = params.path ?? []
 
-  // /okf/ or /okf/index.md → manifest
-  if (segments.length === 0 || (segments.length === 1 && segments[0] === 'index.md')) {
+  // /okf/ or /okf/index or /okf/index.md → manifest
+  if (segments.length === 0 || (segments.length === 1 && (segments[0] === 'index.md' || segments[0] === 'index'))) {
     return new NextResponse(generateOkfIndex(allFiles, baseUrl), {
       headers: { 'Content-Type': 'text/markdown; charset=utf-8' },
     })

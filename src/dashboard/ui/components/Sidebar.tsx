@@ -32,6 +32,19 @@ const NAV = [
     ),
   },
   {
+    href: '/third-audience/okf',
+    label: 'OKF Bundle',
+    icon: (
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
+        <circle cx="6" cy="6" r="2" /><circle cx="18" cy="6" r="2" />
+        <circle cx="6" cy="18" r="2" /><circle cx="18" cy="18" r="2" />
+        <circle cx="12" cy="12" r="2" />
+        <line x1="8" y1="6" x2="10" y2="11" /><line x1="16" y1="6" x2="14" y2="11" />
+        <line x1="8" y1="18" x2="10" y2="13" /><line x1="16" y1="18" x2="14" y2="13" />
+      </svg>
+    ),
+  },
+  {
     href: '/third-audience/health',
     label: 'System Health',
     icon: (

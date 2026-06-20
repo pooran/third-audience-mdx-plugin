@@ -3,6 +3,75 @@ import { MarkdownRenderer } from '../core/markdown-renderer.js'
 
 const renderer = new MarkdownRenderer()
 
+export interface OkfGraphNode {
+  id: string
+  title: string
+  type: string
+  url: string
+}
+
+export interface OkfGraphEdge {
+  source: string
+  target: string
+}
+
+export interface OkfGraphData {
+  nodes: OkfGraphNode[]
+  edges: OkfGraphEdge[]
+}
+
+/**
+ * Builds the knowledge graph data for the OKF viewer.
+ * Nodes = content pages; edges = internal links between them.
+ * Trims to top 100 most-connected nodes (matching WP plugin behaviour).
+ */
+export function buildOkfGraph(files: MdxFile[], baseUrl: string): OkfGraphData {
+  const base = baseUrl.replace(/\/$/, '')
+  const slugSet = new Set(files.map(f => f.slug))
+
+  // Build slug → markdown map for link extraction
+  const mdMap = new Map<string, string>()
+  for (const file of files) {
+    mdMap.set(file.slug, renderer.render(file))
+  }
+
+  // Count degrees to pick top 100
+  const degrees = new Map<string, number>(files.map(f => [f.slug, 0]))
+  const rawEdges: OkfGraphEdge[] = []
+
+  for (const file of files) {
+    const md = mdMap.get(file.slug) ?? ''
+    const linkRe = /\[([^\]]+)\]\((\/[^)]+)\)/g
+    let m: RegExpExecArray | null
+    while ((m = linkRe.exec(md)) !== null) {
+      const candidate = m[2].replace(/^\//, '').replace(/\.md$/, '')
+      if (slugSet.has(candidate) && candidate !== file.slug) {
+        rawEdges.push({ source: file.slug, target: candidate })
+        degrees.set(file.slug, (degrees.get(file.slug) ?? 0) + 1)
+        degrees.set(candidate, (degrees.get(candidate) ?? 0) + 1)
+      }
+    }
+  }
+
+  // Top 100 nodes by degree
+  const top100 = files
+    .slice()
+    .sort((a, b) => (degrees.get(b.slug) ?? 0) - (degrees.get(a.slug) ?? 0))
+    .slice(0, 100)
+  const topSet = new Set(top100.map(f => f.slug))
+
+  const nodes: OkfGraphNode[] = top100.map(f => ({
+    id: f.slug,
+    title: String(f.frontmatter.title ?? f.slug),
+    type: String(f.frontmatter.type ?? 'WebPage'),
+    url: `${base}/${f.slug}`,
+  }))
+
+  const edges = rawEdges.filter(e => topSet.has(e.source) && topSet.has(e.target))
+
+  return { nodes, edges }
+}
+
 /** Generates the /okf/index.md manifest listing all content. */
 export function generateOkfIndex(files: MdxFile[], baseUrl: string): string {
   const base = baseUrl.replace(/\/$/, '')
