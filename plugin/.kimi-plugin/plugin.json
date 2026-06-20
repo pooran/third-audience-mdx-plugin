@@ -1,0 +1,34 @@
+{
+  "name": "third-audience",
+  "version": "1.0.0",
+  "description": "Skills for third-audience-mdx — make your Next.js MDX site discoverable by AI crawlers.",
+  "author": {
+    "name": "third-audience-mdx"
+  },
+  "license": "GPL-2.0-or-later",
+  "keywords": [
+    "mdx",
+    "ai",
+    "llm",
+    "next.js",
+    "bot-detection",
+    "geo"
+  ],
+  "skills": "./skills/",
+  "sessionStart": {
+    "skill": "using-third-audience"
+  },
+  "skillInstructions": "Kimi Code tool mapping for Third Audience skills:\n\n- When a skill says to ask the user a question or present choices, use Kimi Code's `AskUserQuestion` tool with 2-4 concrete options. Put the recommended option first with `(Recommended)` suffix.\n- When a skill refers to `TodoWrite`, use Kimi Code's `TodoList` tool.\n- When a skill says to dispatch a subagent or implementer, use Kimi Code's `Agent` tool with `subagent_type: \"coder\"` for implementation or `subagent_type: \"explore\"` for read-only codebase exploration.\n- Use Kimi Code's `Read`, `Write`, `Edit`, `Bash`, `Grep`, `Glob`, `FetchURL`, `WebSearch` tools by their actual names.\n- When a skill asks to search file contents, use `Grep`; find files by pattern, use `Glob`; fetch a URL, use `FetchURL`.",
+  "interface": {
+    "displayName": "Third Audience",
+    "shortDescription": "Make your MDX site discoverable by AI crawlers — setup, routes, and bot analytics",
+    "longDescription": "For two decades, websites served two audiences: humans and search engines. AI agents are the third. This plugin provides skills to set up third-audience-mdx in your Next.js project, add missing AI route handlers, and debug bot detection when visits aren't being tracked.",
+    "developerName": "third-audience-mdx",
+    "capabilities": [
+      "Interactive",
+      "Read",
+      "Write"
+    ],
+    "websiteURL": "https://github.com/spcaeo/third-audience-wordpress-plugin"
+  }
+}

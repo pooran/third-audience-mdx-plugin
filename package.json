@@ -1,0 +1,125 @@
+{
+  "name": "third-audience-mdx",
+  "version": "1.0.0",
+  "description": "Serve AI-optimized Markdown to LLM crawlers from MDX content sites. Track bot visits, citations, and AI discoverability.",
+  "main": "dist/index.js",
+  "module": "dist/index.mjs",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "import": "./dist/index.mjs",
+      "require": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    },
+    "./routes/markdown": {
+      "import": "./dist/dashboard/routes/markdown-route.mjs",
+      "require": "./dist/dashboard/routes/markdown-route.js",
+      "types": "./dist/dashboard/routes/markdown-route.d.ts"
+    },
+    "./routes/okf": {
+      "import": "./dist/dashboard/routes/okf-route.mjs",
+      "require": "./dist/dashboard/routes/okf-route.js",
+      "types": "./dist/dashboard/routes/okf-route.d.ts"
+    },
+    "./routes/llms-txt": {
+      "import": "./dist/dashboard/routes/llms-txt-route.mjs",
+      "require": "./dist/dashboard/routes/llms-txt-route.js",
+      "types": "./dist/dashboard/routes/llms-txt-route.d.ts"
+    },
+    "./routes/sitemap-ai": {
+      "import": "./dist/dashboard/routes/sitemap-ai-route.mjs",
+      "require": "./dist/dashboard/routes/sitemap-ai-route.js",
+      "types": "./dist/dashboard/routes/sitemap-ai-route.d.ts"
+    },
+    "./routes/citation": {
+      "import": "./dist/dashboard/routes/citation-route.mjs",
+      "require": "./dist/dashboard/routes/citation-route.js",
+      "types": "./dist/dashboard/routes/citation-route.d.ts"
+    },
+    "./routes/analytics": {
+      "import": "./dist/dashboard/routes/analytics-api-route.mjs",
+      "require": "./dist/dashboard/routes/analytics-api-route.js",
+      "types": "./dist/dashboard/routes/analytics-api-route.d.ts"
+    },
+    "./routes/api-key": {
+      "import": "./dist/dashboard/routes/api-key-route.mjs",
+      "require": "./dist/dashboard/routes/api-key-route.js",
+      "types": "./dist/dashboard/routes/api-key-route.d.ts"
+    },
+    "./routes/login": {
+      "import": "./dist/dashboard/routes/login-route.mjs",
+      "require": "./dist/dashboard/routes/login-route.js",
+      "types": "./dist/dashboard/routes/login-route.d.ts"
+    },
+    "./dashboard/auth": {
+      "import": "./dist/dashboard/auth.mjs",
+      "require": "./dist/dashboard/auth.js",
+      "types": "./dist/dashboard/auth.d.ts"
+    },
+    "./dashboard/admin-store": {
+      "import": "./dist/dashboard/admin-store.mjs",
+      "require": "./dist/dashboard/admin-store.js",
+      "types": "./dist/dashboard/admin-store.d.ts"
+    },
+    "./dashboard/ui/globals.css": "./dist/dashboard/ui/globals.css",
+    "./dashboard/ui/components/Sidebar": {
+      "import": "./dist/dashboard/ui/components/Sidebar.mjs",
+      "require": "./dist/dashboard/ui/components/Sidebar.js",
+      "types": "./dist/dashboard/ui/components/Sidebar.d.ts"
+    },
+    "./dashboard/ui/pages/BotAnalyticsPage": {
+      "import": "./dist/dashboard/ui/pages/BotAnalyticsPage.mjs",
+      "require": "./dist/dashboard/ui/pages/BotAnalyticsPage.js",
+      "types": "./dist/dashboard/ui/pages/BotAnalyticsPage.d.ts"
+    },
+    "./dashboard/ui/pages/LlmTrafficPage": {
+      "import": "./dist/dashboard/ui/pages/LlmTrafficPage.mjs",
+      "require": "./dist/dashboard/ui/pages/LlmTrafficPage.js",
+      "types": "./dist/dashboard/ui/pages/LlmTrafficPage.d.ts"
+    },
+    "./dashboard/ui/pages/BotManagementPage": {
+      "import": "./dist/dashboard/ui/pages/BotManagementPage.mjs",
+      "require": "./dist/dashboard/ui/pages/BotManagementPage.js",
+      "types": "./dist/dashboard/ui/pages/BotManagementPage.d.ts"
+    },
+    "./dashboard/ui/pages/SettingsPage": {
+      "import": "./dist/dashboard/ui/pages/SettingsPage.mjs",
+      "require": "./dist/dashboard/ui/pages/SettingsPage.js",
+      "types": "./dist/dashboard/ui/pages/SettingsPage.d.ts"
+    },
+    "./dashboard/ui/pages/SystemHealthPage": {
+      "import": "./dist/dashboard/ui/pages/SystemHealthPage.mjs",
+      "require": "./dist/dashboard/ui/pages/SystemHealthPage.js",
+      "types": "./dist/dashboard/ui/pages/SystemHealthPage.d.ts"
+    }
+  },
+  "bin": {
+    "third-audience": "./dist/cli/index.js"
+  },
+  "scripts": {
+    "build": "tsup src/index.ts src/cli/index.ts src/dashboard/routes/*.ts src/dashboard/auth.ts src/dashboard/ui/components/Sidebar.tsx src/dashboard/ui/pages/*.tsx --format cjs,esm --dts --clean",
+    "dev": "tsup src/index.ts --watch",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "keywords": ["mdx", "ai", "llm", "markdown", "next.js", "crawler", "analytics"],
+  "license": "GPL-2.0-or-later",
+  "peerDependencies": {
+    "next": ">=13.0.0",
+    "react": ">=18.0.0",
+    "react-dom": ">=18.0.0"
+  },
+  "dependencies": {
+    "geoip-lite": "^1.4.10",
+    "gray-matter": "^4.0.3"
+  },
+  "devDependencies": {
+    "@types/geoip-lite": "^1.4.4",
+    "@types/node": "^20.0.0",
+    "@types/react": "^18.0.0",
+    "tsup": "^8.0.0",
+    "typescript": "^5.0.0",
+    "vitest": "^1.0.0"
+  }
+}

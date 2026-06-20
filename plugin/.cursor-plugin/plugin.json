@@ -1,0 +1,21 @@
+{
+  "name": "third-audience",
+  "displayName": "Third Audience",
+  "description": "Skills for third-audience-mdx — make your Next.js MDX site discoverable by AI crawlers (ChatGPT, Claude, Perplexity, Gemini). Setup, route management, and bot detection debugging.",
+  "version": "1.0.0",
+  "author": {
+    "name": "third-audience-mdx"
+  },
+  "license": "GPL-2.0-or-later",
+  "keywords": [
+    "mdx",
+    "ai",
+    "llm",
+    "next.js",
+    "bot-detection",
+    "llms.txt",
+    "geo"
+  ],
+  "skills": "./skills/",
+  "hooks": "./hooks/hooks-cursor.json"
+}

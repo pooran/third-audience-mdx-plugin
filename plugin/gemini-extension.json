@@ -1,0 +1,6 @@
+{
+  "name": "third-audience",
+  "description": "Skills for third-audience-mdx — make your Next.js MDX site discoverable by AI crawlers",
+  "version": "1.0.0",
+  "contextFileName": "GEMINI.md"
+}

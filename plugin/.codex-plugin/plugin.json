@@ -1,0 +1,41 @@
+{
+  "name": "third-audience",
+  "version": "1.0.0",
+  "description": "Skills for third-audience-mdx — make your Next.js MDX site discoverable by AI crawlers (ChatGPT, Claude, Perplexity, Gemini). Setup, route management, and bot detection debugging.",
+  "author": {
+    "name": "third-audience-mdx",
+    "url": "https://github.com/spcaeo/third-audience-wordpress-plugin"
+  },
+  "license": "GPL-2.0-or-later",
+  "keywords": [
+    "mdx",
+    "ai",
+    "llm",
+    "next.js",
+    "bot-detection",
+    "llms.txt",
+    "sitemap",
+    "geo",
+    "generative-engine-optimization"
+  ],
+  "skills": "./skills/",
+  "hooks": "./hooks/hooks-codex.json",
+  "interface": {
+    "displayName": "Third Audience",
+    "shortDescription": "Make your MDX site discoverable by AI crawlers — setup, routes, and bot analytics",
+    "longDescription": "For two decades, websites served two audiences: humans and search engines. AI agents are the third. This plugin provides skills to set up third-audience-mdx in your Next.js project, add missing AI route handlers, and debug bot detection when visits aren't being tracked.",
+    "developerName": "third-audience-mdx",
+    "category": "Coding",
+    "capabilities": [
+      "Interactive",
+      "Read",
+      "Write"
+    ],
+    "defaultPrompt": [
+      "Set up third-audience-mdx in my Next.js project.",
+      "Why aren't bot visits being tracked?"
+    ],
+    "websiteURL": "https://github.com/spcaeo/third-audience-wordpress-plugin",
+    "brandColor": "#007AFF"
+  }
+}

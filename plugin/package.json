@@ -1,0 +1,12 @@
+{
+  "name": "third-audience",
+  "version": "1.0.0",
+  "description": "Claude Code plugin for third-audience-mdx — skills and hooks for AI-optimized MDX content sites",
+  "keywords": ["claude-plugin", "skills", "mdx", "ai", "llm", "next.js"],
+  "license": "GPL-2.0-or-later",
+  "pi": {
+    "skills": [
+      "./skills"
+    ]
+  }
+}

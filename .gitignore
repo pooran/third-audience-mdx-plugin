@@ -1,0 +1,11 @@
+node_modules/
+dist/
+data/ta-visits.jsonl
+data/ta-citations.jsonl
+data/ta-cache/
+data/ta-admin.json
+.env
+.env.local
+
+CLAUDE.md
+WORKLOG.md
