@@ -1,6 +1,6 @@
 {
   "name": "third-audience-mdx",
-  "version": "1.0.3",
+  "version": "1.0.4",
   "description": "Serve AI-optimized Markdown to LLM crawlers from MDX content sites. Track bot visits, citations, and AI discoverability.",
   "main": "dist/index.js",
   "module": "dist/index.mjs",
@@ -101,6 +101,11 @@
       "import": "./dist/dashboard/routes/okf-graph-route.mjs",
       "require": "./dist/dashboard/routes/okf-graph-route.js",
       "types": "./dist/dashboard/routes/okf-graph-route.d.ts"
+    },
+    "./routes/bots-config": {
+      "import": "./dist/dashboard/routes/bots-config-route.mjs",
+      "require": "./dist/dashboard/routes/bots-config-route.js",
+      "types": "./dist/dashboard/routes/bots-config-route.d.ts"
     }
   },
   "bin": {
