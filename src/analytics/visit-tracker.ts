@@ -37,7 +37,9 @@ export class VisitTracker {
 
   record(req: NextRequest, meta: { responseMs?: number; cacheHit?: boolean; contentLength?: number } = {}): void {
     const ua = req.headers.get('user-agent') ?? ''
-    const result = detectBot({ userAgent: ua, headers: Object.fromEntries(req.headers) })
+    const headers: Record<string, string> = {}
+    req.headers.forEach((value, key) => { headers[key] = value })
+    const result = detectBot({ userAgent: ua, headers })
 
     if (!result.isBot) return // only track bots
 

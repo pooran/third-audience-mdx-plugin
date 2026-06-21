@@ -1,6 +1,6 @@
 {
   "name": "third-audience-mdx",
-  "version": "1.0.4",
+  "version": "1.0.6",
   "description": "Serve AI-optimized Markdown to LLM crawlers from MDX content sites. Track bot visits, citations, and AI discoverability.",
   "main": "dist/index.js",
   "module": "dist/index.mjs",

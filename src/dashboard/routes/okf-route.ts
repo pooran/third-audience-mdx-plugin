@@ -9,12 +9,13 @@ const reader = new MdxReader({ contentDir: path.join(process.cwd(), process.env.
  * Handler for /okf/ and /okf/[...slug].md
  * Rewired from middleware to /api/third-audience/okf/[...path]
  */
-export async function GET(req: NextRequest, { params }: { params: { path?: string[] } }) {
+export async function GET(req: NextRequest, { params }: { params: Promise<{ path?: string[] }> }) {
   const baseUrl = process.env.NEXT_PUBLIC_SITE_URL
     ?? `${req.nextUrl.protocol}//${req.nextUrl.host}`
 
   const allFiles = reader.readAll()
-  const segments = params.path ?? []
+  const { path: pathSegments } = await params
+  const segments = pathSegments ?? []
 
   // /okf/ or /okf/index or /okf/index.md → manifest
   if (segments.length === 0 || (segments.length === 1 && (segments[0] === 'index.md' || segments[0] === 'index'))) {

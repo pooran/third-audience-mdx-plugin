@@ -80,10 +80,14 @@ function checkHeuristics(
     return { isBot: true, botName: null, confidence: 'low', detectionMethod: 'heuristic', category: 'unknown_bot' }
   }
 
-  // Missing typical browser headers
+  // Missing typical browser headers — only a bot signal when the UA does NOT
+  // present itself as a real browser. Genuine browsers occasionally arrive
+  // without accept-language/accept-encoding (privacy extensions, proxies,
+  // some CDNs), so we must not flag them on missing headers alone.
   const hasAcceptLang = !!headers['accept-language']
   const hasAcceptEncoding = !!headers['accept-encoding']
-  if (!hasAcceptLang && !hasAcceptEncoding) {
+  const claimsBrowser = /chrome|firefox|safari|edge|opera|gecko|applewebkit/i.test(ua)
+  if (!hasAcceptLang && !hasAcceptEncoding && !claimsBrowser) {
     return { isBot: true, botName: null, confidence: 'low', detectionMethod: 'heuristic', category: 'unknown_bot' }
   }
 
