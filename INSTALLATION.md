@@ -34,7 +34,7 @@ npx third-audience init
 
 The wizard will:
 1. Detect your Next.js project
-2. Ask for your content directory (e.g. `content`)
+2. Ask for your content directory (e.g. `coyesntent`)
 3. Ask for your data directory (e.g. `data`)
 4. Ask for a dashboard secret
 5. Write `middleware.ts` if it doesn't exist
