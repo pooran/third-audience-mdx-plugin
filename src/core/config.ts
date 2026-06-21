@@ -3,6 +3,13 @@ export interface ThirdAudienceConfig {
   contentDir?: string
   /** Directory for JSONL data files. Default: 'data' */
   dataDir?: string
+  /**
+   * URL path segments to strip when mapping a request slug to a content file.
+   * Use when your route structure differs from your file layout — e.g. URLs
+   * are /en/learn/hydroponics/x but files live at content/en/hydroponics/x.mdx.
+   * Set ['learn'] to drop the 'learn' segment. Default: [] (no rewriting).
+   */
+  stripSegments?: string[]
   /** Mount the /third-audience/ dashboard. Default: true */
   dashboard?: boolean
   /** Secret for dashboard access (HTTP Basic or bearer). Required when dashboard: true */
@@ -26,6 +33,7 @@ export interface ThirdAudienceConfig {
 export const defaultConfig: Required<ThirdAudienceConfig> = {
   contentDir: 'content',
   dataDir: 'data',
+  stripSegments: [],
   dashboard: true,
   dashboardSecret: '',
   notifications: {},

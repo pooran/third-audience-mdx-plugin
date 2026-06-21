@@ -39,6 +39,7 @@ export function withThirdAudience(
       TA_CONTENT_DIR: config.contentDir,
       TA_DATA_DIR: config.dataDir,
       TA_DASHBOARD_ENABLED: String(config.dashboard),
+      TA_STRIP_SEGMENTS: config.stripSegments.join(','),
     },
   }
 }

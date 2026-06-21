@@ -11,22 +11,41 @@ export interface MdxFile {
 
 export interface MdxReaderOptions {
   contentDir: string // absolute path to content directory
+  /** URL path segments to drop when mapping a request slug to a file. */
+  stripSegments?: string[]
 }
 
 export class MdxReader {
   private contentDir: string
+  private stripSegments: string[]
 
   constructor(options: MdxReaderOptions) {
     this.contentDir = options.contentDir
+    this.stripSegments = options.stripSegments ?? []
+  }
+
+  /**
+   * Remove configured URL-only segments from a slug so it maps to the file
+   * layout. e.g. stripSegments ['learn'] turns 'en/learn/hydroponics/x' into
+   * 'en/hydroponics/x'. Only whole path segments are removed.
+   */
+  private applyStrip(slug: string): string {
+    if (this.stripSegments.length === 0) return slug
+    const drop = new Set(this.stripSegments)
+    return slug
+      .split('/')
+      .filter((seg) => !drop.has(seg))
+      .join('/')
   }
 
   /** Read a single MDX file by slug. Returns null if not found. */
   read(slug: string): MdxFile | null {
+    const resolved = this.applyStrip(slug)
     const candidates = [
-      path.join(this.contentDir, `${slug}.mdx`),
-      path.join(this.contentDir, `${slug}.md`),
-      path.join(this.contentDir, slug, 'index.mdx'),
-      path.join(this.contentDir, slug, 'index.md'),
+      path.join(this.contentDir, `${resolved}.mdx`),
+      path.join(this.contentDir, `${resolved}.md`),
+      path.join(this.contentDir, resolved, 'index.mdx'),
+      path.join(this.contentDir, resolved, 'index.md'),
     ]
 
     for (const filePath of candidates) {

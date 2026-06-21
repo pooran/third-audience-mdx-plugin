@@ -5,7 +5,10 @@ import { MarkdownRenderer } from '../../core/markdown-renderer.js'
 import { CacheManager } from '../../cache/cache-manager.js'
 import { VisitTracker } from '../../analytics/visit-tracker.js'
 
-const reader = new MdxReader({ contentDir: path.join(process.cwd(), process.env.TA_CONTENT_DIR ?? 'content') })
+const reader = new MdxReader({
+  contentDir: path.join(process.cwd(), process.env.TA_CONTENT_DIR ?? 'content'),
+  stripSegments: (process.env.TA_STRIP_SEGMENTS ?? '').split(',').map((s) => s.trim()).filter(Boolean),
+})
 const renderer = new MarkdownRenderer()
 const cache = new CacheManager({
   cacheDir: path.join(process.cwd(), process.env.TA_DATA_DIR ?? 'data', 'ta-cache'),
