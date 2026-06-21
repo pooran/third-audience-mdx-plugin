@@ -1,8 +1,7 @@
-import fs from 'fs'
-import path from 'path'
 import type { NextRequest } from 'next/server'
 import { detectBot } from '../detection/bot-detection-pipeline.js'
 import { getCountry } from './geolocation.js'
+import { getStore } from '../storage/get-store.js'
 
 export interface VisitRecord {
   timestamp: string
@@ -22,15 +21,10 @@ export interface VisitRecord {
 
 export class VisitTracker {
   private static instance: VisitTracker | null = null
-  private dataDir: string
 
-  private constructor(dataDir: string) {
-    this.dataDir = dataDir
-  }
-
-  static getInstance(dataDir = process.env.TA_DATA_DIR ?? 'data'): VisitTracker {
+  static getInstance(): VisitTracker {
     if (!VisitTracker.instance) {
-      VisitTracker.instance = new VisitTracker(dataDir)
+      VisitTracker.instance = new VisitTracker()
     }
     return VisitTracker.instance
   }
@@ -41,7 +35,7 @@ export class VisitTracker {
     req.headers.forEach((value, key) => { headers[key] = value })
     const result = detectBot({ userAgent: ua, headers })
 
-    if (!result.isBot) return // only track bots
+    if (!result.isBot) return
 
     const ip = req.headers.get('x-forwarded-for')?.split(',')[0]?.trim()
       ?? req.headers.get('x-real-ip')
@@ -63,16 +57,7 @@ export class VisitTracker {
       content_length: meta.contentLength ?? null,
     }
 
-    this.append('ta-visits.jsonl', record)
-  }
-
-  private append(filename: string, record: VisitRecord): void {
-    try {
-      const filePath = path.join(this.dataDir, filename)
-      fs.mkdirSync(this.dataDir, { recursive: true })
-      fs.appendFileSync(filePath, JSON.stringify(record) + '\n', 'utf-8')
-    } catch {
-      // Tracking must never throw
-    }
+    // Fire-and-forget — tracking must never block the response
+    getStore().appendVisit(record).catch(() => {})
   }
 }

@@ -1,6 +1,5 @@
-import fs from 'fs'
-import path from 'path'
 import type { NextRequest } from 'next/server'
+import { getStore } from '../storage/get-store.js'
 
 export interface CitationRecord {
   timestamp: string
@@ -12,19 +11,19 @@ export interface CitationRecord {
   referer: string
 }
 
-/** Platform detection from Referer URL */
 const AI_PLATFORMS: Array<{ name: string; patterns: RegExp[]; queryParam?: string }> = [
-  { name: 'ChatGPT',    patterns: [/chat\.openai\.com/i, /chatgpt\.com/i], queryParam: 'q' },
+  { name: 'ChatGPT',    patterns: [/openai\.com/i, /chatgpt\.com/i],      queryParam: 'q' },
   { name: 'Perplexity', patterns: [/perplexity\.ai/i],                    queryParam: 'q' },
-  { name: 'Claude',     patterns: [/claude\.ai/i] },
+  { name: 'Claude',     patterns: [/claude\.ai/i, /anthropic\.com/i] },
   { name: 'Gemini',     patterns: [/gemini\.google\.com/i, /bard\.google\.com/i] },
-  { name: 'Copilot',    patterns: [/copilot\.microsoft\.com/i, /bing\.com\/chat/i], queryParam: 'q' },
-  { name: 'YouChat',    patterns: [/you\.com/i],                           queryParam: 'q' },
+  { name: 'Copilot',    patterns: [/copilot\.microsoft\.com/i, /bing\.com\/chat/i] },
+  { name: 'You.com',    patterns: [/you\.com/i],                           queryParam: 'q' },
+  { name: 'Phind',      patterns: [/phind\.com/i] },
+  { name: 'Kagi',       patterns: [/kagi\.com/i],                          queryParam: 'q' },
 ]
 
-export function detectAiPlatform(referer: string): { platform: string; query: string | null } | null {
+function detectAiPlatform(referer: string): { platform: string; query: string | null } | null {
   if (!referer) return null
-
   let url: URL
   try { url = new URL(referer) } catch { return null }
 
@@ -38,13 +37,6 @@ export function detectAiPlatform(referer: string): { platform: string; query: st
 }
 
 export class CitationTracker {
-  private dataDir: string
-
-  constructor(dataDir = process.env.TA_DATA_DIR ?? 'data') {
-    this.dataDir = dataDir
-  }
-
-  /** Call from an API route or middleware to record a citation visit. */
   record(req: NextRequest): CitationRecord | null {
     const referer = req.headers.get('referer') ?? ''
     const detection = detectAiPlatform(referer)
@@ -52,7 +44,7 @@ export class CitationTracker {
 
     const ip = req.headers.get('x-forwarded-for')?.split(',')[0]?.trim()
       ?? req.headers.get('x-real-ip')
-      ?? 'unknown'
+      ?? 'client'
 
     const record: CitationRecord = {
       timestamp: new Date().toISOString(),
@@ -64,13 +56,12 @@ export class CitationTracker {
       referer,
     }
 
-    this.append(record)
+    // Fire-and-forget
+    getStore().appendCitation(record).catch(() => {})
     return record
   }
 
-  /** Also handles client-side POSTs from citation-tracker.js */
-  recordFromBody(body: Partial<CitationRecord>): void {
-    if (!body.platform || !body.url) return
+  recordFromBody(body: { platform: string; query?: string | null; url: string; ip?: string; user_agent?: string; referer?: string }): void {
     const record: CitationRecord = {
       timestamp: new Date().toISOString(),
       platform: body.platform,
@@ -80,16 +71,6 @@ export class CitationTracker {
       user_agent: body.user_agent ?? '',
       referer: body.referer ?? '',
     }
-    this.append(record)
-  }
-
-  private append(record: CitationRecord): void {
-    try {
-      const filePath = path.join(this.dataDir, 'ta-citations.jsonl')
-      fs.mkdirSync(this.dataDir, { recursive: true })
-      fs.appendFileSync(filePath, JSON.stringify(record) + '\n', 'utf-8')
-    } catch {
-      // Never throw from tracking
-    }
+    getStore().appendCitation(record).catch(() => {})
   }
 }

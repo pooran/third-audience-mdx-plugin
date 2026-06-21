@@ -10,7 +10,7 @@ const BOT_COLORS: Record<string, string> = {
 
 export async function BotAnalyticsPage() {
   const stats = new PerformanceStats()
-  const summary = stats.compute(30)
+  const summary = await stats.compute(30)
 
   const cacheRate = summary.cacheHitRate !== null
     ? `${(summary.cacheHitRate * 100).toFixed(0)}%` : '—'

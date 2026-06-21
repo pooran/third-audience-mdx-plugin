@@ -4,28 +4,27 @@ import { getApiKey, rotateApiKey } from '../admin-store.js'
 
 /** GET /api/third-audience/api-key — returns masked key for display */
 export async function GET(req: NextRequest): Promise<NextResponse> {
-  if (!checkApiAuth(req)) return unauthorizedResponse()
+  if (!await checkApiAuth(req)) return unauthorizedResponse()
 
-  const key = getApiKey()
+  const key = await getApiKey()
   if (!key) {
     return NextResponse.json({ key: null, masked: null })
   }
 
-  // Show first 8 + last 4 chars, mask the middle — same pattern as WP settings page
   const masked = key.slice(0, 8) + '••••••••••••••••••••••••••••••••••••••' + key.slice(-4)
   return NextResponse.json({ masked, prefix: key.slice(0, 3) })
 }
 
 /** POST /api/third-audience/api-key — rotate (regenerate) the API key */
 export async function POST(req: NextRequest): Promise<NextResponse> {
-  if (!checkApiAuth(req)) return unauthorizedResponse()
+  if (!await checkApiAuth(req)) return unauthorizedResponse()
 
   const body = await req.json().catch(() => ({})) as Record<string, unknown>
   if (body.action !== 'rotate') {
     return NextResponse.json({ error: 'Send { action: "rotate" }' }, { status: 400 })
   }
 
-  const newKey = rotateApiKey()
+  const newKey = await rotateApiKey()
   return NextResponse.json({
     key: newKey,
     message: 'API key rotated. Copy it now — it will not be shown again.',

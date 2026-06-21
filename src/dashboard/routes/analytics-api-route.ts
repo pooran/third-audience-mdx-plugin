@@ -6,12 +6,12 @@ const stats = new PerformanceStats()
 
 /** GET /api/third-audience/analytics?days=30 */
 export async function GET(req: NextRequest) {
-  if (!checkApiAuth(req)) {
+  if (!await checkApiAuth(req)) {
     return unauthorizedResponse()
   }
 
   const days = parseInt(req.nextUrl.searchParams.get('days') ?? '30', 10)
-  const summary = stats.compute(days)
+  const summary = await stats.compute(days)
 
   return NextResponse.json(summary)
 }

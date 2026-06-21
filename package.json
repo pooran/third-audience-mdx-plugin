@@ -1,6 +1,6 @@
 {
   "name": "third-audience-mdx",
-  "version": "1.0.8",
+  "version": "1.0.9",
   "description": "Serve AI-optimized Markdown to LLM crawlers from MDX content sites. Track bot visits, citations, and AI discoverability.",
   "main": "dist/index.js",
   "module": "dist/index.mjs",
@@ -112,7 +112,7 @@
     "third-audience": "./dist/cli/index.js"
   },
   "scripts": {
-    "build": "tsup",
+    "build": "tsup --config v.config.ts",
     "dev": "tsup src/index.ts --watch",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
@@ -134,12 +134,16 @@
     "react-dom": ">=18.0.0"
   },
   "dependencies": {
+    "better-sqlite3": "^9.4.3",
     "geoip-lite": "^1.4.10",
-    "gray-matter": "^4.0.3"
+    "gray-matter": "^4.0.3",
+    "pg": "^8.11.0"
   },
   "devDependencies": {
+    "@types/better-sqlite3": "^7.6.8",
     "@types/geoip-lite": "^1.4.4",
     "@types/node": "^20.0.0",
+    "@types/pg": "^8.11.0",
     "@types/react": "^18.0.0",
     "tsup": "^8.0.0",
     "typescript": "^5.0.0",

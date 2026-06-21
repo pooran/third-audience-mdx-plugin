@@ -40,6 +40,8 @@ export function withThirdAudience(
       TA_DATA_DIR: config.dataDir,
       TA_DASHBOARD_ENABLED: String(config.dashboard),
       TA_STRIP_SEGMENTS: config.stripSegments.join(','),
+      TA_STORAGE_TYPE: config.storage.type,
+      ...('url' in config.storage ? { TA_STORAGE_URL: config.storage.url } : {}),
     },
   }
 }

@@ -1,5 +1,4 @@
-import fs from 'fs'
-import path from 'path'
+import { getStore } from '../storage/get-store.js'
 import type { CitationRecord } from './citation-tracker.js'
 
 export interface CitationAlert {
@@ -11,19 +10,12 @@ export interface CitationAlert {
 }
 
 export class CitationAlerts {
-  private dataDir: string
-
-  constructor(dataDir = process.env.TA_DATA_DIR ?? 'data') {
-    this.dataDir = dataDir
-  }
-
-  /** Call after appending a new citation record. Returns any triggered alerts. */
-  check(newRecord: CitationRecord): CitationAlert[] {
+  async check(newRecord: CitationRecord): Promise<CitationAlert[]> {
     const alerts: CitationAlert[] = []
-    const history = this.loadRecent(24) // last 24h
 
-    // First citation from this platform ever
-    const platformHistory = this.loadAll().filter(r => r.platform === newRecord.platform)
+    const allRecords = await getStore().getAllCitations()
+    const platformHistory = allRecords.filter(r => r.platform === newRecord.platform)
+
     if (platformHistory.length === 1) {
       alerts.push({
         type: 'first_citation',
@@ -34,8 +26,9 @@ export class CitationAlerts {
       })
     }
 
-    // New platform not seen in last 30 days
-    const recentPlatforms = new Set(this.loadRecent(30 * 24).map(r => r.platform))
+    const since30d = new Date(Date.now() - 30 * 24 * 3_600_000).toISOString()
+    const recent30d = await getStore().getCitations(since30d)
+    const recentPlatforms = new Set(recent30d.map(r => r.platform))
     if (!recentPlatforms.has(newRecord.platform) && platformHistory.length > 1) {
       alerts.push({
         type: 'new_platform',
@@ -45,11 +38,11 @@ export class CitationAlerts {
       })
     }
 
-    // Citation spike: >3× the hourly baseline
-    const hourly = history.filter(r => r.platform === newRecord.platform)
+    const since24h = new Date(Date.now() - 24 * 3_600_000).toISOString()
+    const history24h = await getStore().getCitations(since24h)
+    const hourly = history24h.filter(r => r.platform === newRecord.platform)
     const baseline = hourly.length > 0 ? hourly.length / 24 : 0
-    const lastHourCount = history.filter(r =>
-      r.platform === newRecord.platform &&
+    const lastHourCount = hourly.filter(r =>
       new Date(r.timestamp).getTime() > Date.now() - 3_600_000
     ).length
     if (baseline > 2 && lastHourCount > baseline * 3) {
@@ -63,24 +56,5 @@ export class CitationAlerts {
     }
 
     return alerts
-  }
-
-  private loadAll(): CitationRecord[] {
-    return this.loadLines(Infinity)
-  }
-
-  private loadRecent(hours: number): CitationRecord[] {
-    return this.loadLines(hours)
-  }
-
-  private loadLines(hours: number): CitationRecord[] {
-    const filePath = path.join(this.dataDir, 'ta-citations.jsonl')
-    if (!fs.existsSync(filePath)) return []
-    const cutoff = new Date(Date.now() - hours * 3_600_000).toISOString()
-    return fs.readFileSync(filePath, 'utf-8')
-      .split('\n')
-      .filter(Boolean)
-      .map(l => { try { return JSON.parse(l) as CitationRecord } catch { return null } })
-      .filter((r): r is CitationRecord => r !== null && (hours === Infinity || r.timestamp >= cutoff))
   }
 }

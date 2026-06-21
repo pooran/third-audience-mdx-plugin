@@ -1,8 +1,18 @@
+export type StorageConfig =
+  | { type: 'sqlite' }
+  | { type: 'postgres'; url: string }
+  | { type: 'supabase'; url: string }
+
 export interface ThirdAudienceConfig {
   /** Directory containing .mdx files, relative to project root. Default: 'content' */
   contentDir?: string
   /** Directory for JSONL data files. Default: 'data' */
   dataDir?: string
+  /**
+   * Storage backend. Defaults to SQLite (local file, zero config).
+   * Set { type: 'postgres', url: '...' } or { type: 'supabase', url: '...' } for Postgres.
+   */
+  storage?: StorageConfig
   /**
    * URL path segments to strip when mapping a request slug to a content file.
    * Use when your route structure differs from your file layout — e.g. URLs
@@ -34,6 +44,7 @@ export const defaultConfig: Required<ThirdAudienceConfig> = {
   contentDir: 'content',
   dataDir: 'data',
   stripSegments: [],
+  storage: { type: 'sqlite' },
   dashboard: true,
   dashboardSecret: '',
   notifications: {},

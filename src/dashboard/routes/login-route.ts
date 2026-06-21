@@ -80,8 +80,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       })
     }
     const { updatePassword } = await import('../admin-store.js')
-    updatePassword(password)
-    // Issue new session after reset
+    await updatePassword(password)
     const token = signSession('admin:' + Date.now())
     const res = NextResponse.redirect(new URL('/third-audience/', req.nextUrl))
     res.cookies.set(COOKIE_NAME, token, {
@@ -94,27 +93,24 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     return res
   }
 
-  // Normal login
-  if (!password || !verifyPassword(password)) {
+  if (!password || !await verifyPassword(password)) {
     return new NextResponse(LOGIN_HTML('Incorrect password.'), {
       headers: { 'Content-Type': 'text/html; charset=utf-8' },
     })
   }
 
-  recordLogin()
+  await recordLogin()
 
-  const admin = loadAdmin()
+  const admin = await loadAdmin()
   const token = signSession('admin:' + Date.now())
 
-  // If this was the default password, force reset before entering dashboard
   if (admin?.isDefaultPassword) {
     const res = NextResponse.redirect(new URL('/third-audience/login?reset=1', req.nextUrl))
-    // Set a temporary cookie so reset page knows we're authenticated
     res.cookies.set(COOKIE_NAME + '_reset', token, {
       httpOnly: true,
       sameSite: 'strict',
       secure: process.env.NODE_ENV === 'production',
-      maxAge: 300, // 5 min to complete reset
+      maxAge: 300,
       path: '/third-audience/login',
     })
     return res
