@@ -7,7 +7,7 @@ export function getStore(): Store {
 
   const type = process.env.TA_STORAGE_TYPE ?? 'sqlite'
 
-  if (type === 'postgres' || type === 'supabase') {
+  if (type === 'postgres') {
     const { PostgresStore } = require('./postgres-store.js') as typeof import('./postgres-store.js')
     _store = new PostgresStore()
   } else {

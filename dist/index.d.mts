@@ -6,9 +6,6 @@ type StorageConfig = {
 } | {
     type: 'postgres';
     url: string;
-} | {
-    type: 'supabase';
-    url: string;
 };
 interface ThirdAudienceConfig {
     /** Directory containing .mdx files, relative to project root. Default: 'content' */
@@ -17,7 +14,7 @@ interface ThirdAudienceConfig {
     dataDir?: string;
     /**
      * Storage backend. Defaults to SQLite (local file, zero config).
-     * Set { type: 'postgres', url: '...' } or { type: 'supabase', url: '...' } for Postgres.
+     * Set { type: 'postgres', url: '...' } for Postgres/Supabase.
      */
     storage?: StorageConfig;
     /**

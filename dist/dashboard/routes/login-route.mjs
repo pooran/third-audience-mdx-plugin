@@ -397,7 +397,7 @@ var init_sqlite_store = __esm({
 function getStore() {
   if (_store) return _store;
   const type = process.env.TA_STORAGE_TYPE ?? "sqlite";
-  if (type === "postgres" || type === "supabase") {
+  if (type === "postgres") {
     const { PostgresStore: PostgresStore2 } = (init_postgres_store(), __toCommonJS(postgres_store_exports));
     _store = new PostgresStore2();
   } else {
