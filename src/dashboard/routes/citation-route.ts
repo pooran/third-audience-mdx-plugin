@@ -13,6 +13,17 @@ export async function POST(req: NextRequest) {
   try {
     const body = await req.json()
     tracker.recordFromBody(body)
+    // Check for notable citation events (first citation, new platform, spike)
+    const record = {
+      timestamp: new Date().toISOString(),
+      platform: body.platform ?? 'unknown',
+      query: body.query ?? null,
+      url: body.url ?? '',
+      ip: body.ip ?? 'client',
+      user_agent: body.user_agent ?? '',
+      referer: body.referer ?? '',
+    }
+    alerts.check(record).catch(() => {})
     return new NextResponse(null, { status: 204 })
   } catch {
     return new NextResponse(null, { status: 400 })

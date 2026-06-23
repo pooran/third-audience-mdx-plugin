@@ -25,7 +25,7 @@ export default defineConfig({
   sourcemap: true,
   jsx: 'react-jsx',
   esbuildOptions(options) {
-    options.external = ['next', 'react', 'react-dom', 'next/server', 'next/navigation', 'next/headers']
+    options.external = ['next', 'react', 'react-dom', 'next/server', 'next/navigation', 'next/headers', 'better-sqlite3', 'pg']
   },
   // Copy CSS file as-is to dist
   async onSuccess() {

@@ -26,7 +26,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ slug
   const slug = slugParts.join('/')
   const cacheKey = `markdown:${slug}`
 
-  const cached = cache.get(cacheKey)
+  const cached = await cache.getAsync(cacheKey)
   if (cached) {
     // Record the bot visit (VisitTracker no-ops for non-bot user agents).
     VisitTracker.getInstance().record(req, {

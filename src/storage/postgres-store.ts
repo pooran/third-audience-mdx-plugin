@@ -9,7 +9,8 @@ async function getClient(): Promise<Client> {
   if (_client) return _client
   const url = process.env.TA_STORAGE_URL
   if (!url) throw new Error('TA_STORAGE_URL is required for postgres/supabase storage')
-  _client = new Client({ connectionString: url, ssl: { rejectUnauthorized: false } })
+  const sslUrl = url.replace(/[?&]sslmode=[^&]*/g, '')
+  _client = new Client({ connectionString: sslUrl, ssl: { rejectUnauthorized: false } })
   await _client.connect()
   await migrate(_client)
   return _client

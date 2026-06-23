@@ -3,6 +3,22 @@ import { NextResponse, type NextRequest } from 'next/server'
 const COOKIE_NAME = 'ta_session'
 const RESET_COOKIE = 'ta_session_reset'
 
+// Edge-safe bot UA patterns — no Node.js APIs needed
+const BOT_UA_PATTERNS = [
+  'claudebot', 'gptbot', 'chatgpt-user', 'perplexitybot', 'google-extended',
+  'applebot', 'ccbot', 'coherecrawler', 'ai2bot', 'bytespider', 'diffbot',
+  'youbot', 'facebookbot', 'bingbot', 'googlebot', 'slurp', 'duckduckbot',
+  'baiduspider', 'yandexbot', 'sogou', 'exabot', 'ia_archiver', 'scrapy',
+  'curl/', 'python-requests', 'go-http-client', 'okhttp', 'axios/', 'got/',
+  'node-fetch', 'undici', 'wget/', 'libwww', 'lwp-', 'java/', 'ruby',
+  'headlesschrome', 'phantomjs', 'selenium', 'playwright', 'puppeteer',
+]
+
+function isBotUserAgent(ua: string): boolean {
+  const lower = ua.toLowerCase()
+  return BOT_UA_PATTERNS.some(p => lower.includes(p))
+}
+
 /**
  * Third Audience middleware — Edge-runtime compatible (no Node.js crypto).
  *
@@ -82,6 +98,28 @@ export function thirdAudienceMiddleware(req: NextRequest): NextResponse | null {
     const url = req.nextUrl.clone()
     url.pathname = '/api/third-audience/sitemap-ai'
     return NextResponse.rewrite(url)
+  }
+
+  // Track bot visits to regular HTML pages (fire-and-forget, never blocks response)
+  const ua = req.headers.get('user-agent') ?? ''
+  const isApi = pathname.startsWith('/api/')
+  const isDashboard = pathname.startsWith('/third-audience')
+  const isAsset = pathname.startsWith('/_next') || pathname.includes('.')
+  if (isBotUserAgent(ua) && !isApi && !isDashboard && !isAsset) {
+    const trackUrl = req.nextUrl.clone()
+    trackUrl.pathname = '/api/third-audience/track'
+    // Pass original URL so the track handler records the right path
+    trackUrl.searchParams.set('_url', pathname)
+    fetch(trackUrl.toString(), {
+      method: 'GET',
+      headers: {
+        'user-agent': ua,
+        'x-forwarded-for': req.headers.get('x-forwarded-for') ?? '',
+        'x-real-ip': req.headers.get('x-real-ip') ?? '',
+        'referer': req.headers.get('referer') ?? '',
+        'x-ta-original-url': pathname,
+      },
+    }).catch(() => {})
   }
 
   // No match — let the caller's middleware chain continue

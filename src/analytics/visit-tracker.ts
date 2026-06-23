@@ -29,7 +29,7 @@ export class VisitTracker {
     return VisitTracker.instance
   }
 
-  record(req: NextRequest, meta: { responseMs?: number; cacheHit?: boolean; contentLength?: number } = {}): void {
+  record(req: NextRequest, meta: { responseMs?: number; cacheHit?: boolean; contentLength?: number; url?: string } = {}): void {
     const ua = req.headers.get('user-agent') ?? ''
     const headers: Record<string, string> = {}
     req.headers.forEach((value, key) => { headers[key] = value })
@@ -47,7 +47,7 @@ export class VisitTracker {
       bot_category: result.category,
       detection_method: result.detectionMethod,
       confidence: result.confidence,
-      url: req.nextUrl.pathname,
+      url: meta.url ?? req.nextUrl.pathname,
       ip,
       country: getCountry(ip),
       user_agent: ua,

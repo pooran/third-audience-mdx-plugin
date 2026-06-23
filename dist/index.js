@@ -87,6 +87,53 @@ function withThirdAudience(options = {}, nextConfig = {}) {
 var import_server = require("next/server");
 var COOKIE_NAME = "ta_session";
 var RESET_COOKIE = "ta_session_reset";
+var BOT_UA_PATTERNS = [
+  "claudebot",
+  "gptbot",
+  "chatgpt-user",
+  "perplexitybot",
+  "google-extended",
+  "applebot",
+  "ccbot",
+  "coherecrawler",
+  "ai2bot",
+  "bytespider",
+  "diffbot",
+  "youbot",
+  "facebookbot",
+  "bingbot",
+  "googlebot",
+  "slurp",
+  "duckduckbot",
+  "baiduspider",
+  "yandexbot",
+  "sogou",
+  "exabot",
+  "ia_archiver",
+  "scrapy",
+  "curl/",
+  "python-requests",
+  "go-http-client",
+  "okhttp",
+  "axios/",
+  "got/",
+  "node-fetch",
+  "undici",
+  "wget/",
+  "libwww",
+  "lwp-",
+  "java/",
+  "ruby",
+  "headlesschrome",
+  "phantomjs",
+  "selenium",
+  "playwright",
+  "puppeteer"
+];
+function isBotUserAgent(ua) {
+  const lower = ua.toLowerCase();
+  return BOT_UA_PATTERNS.some((p) => lower.includes(p));
+}
 function thirdAudienceMiddleware(req) {
   const { pathname } = req.nextUrl;
   const accept = req.headers.get("accept") ?? "";
@@ -139,6 +186,26 @@ function thirdAudienceMiddleware(req) {
     const url = req.nextUrl.clone();
     url.pathname = "/api/third-audience/sitemap-ai";
     return import_server.NextResponse.rewrite(url);
+  }
+  const ua = req.headers.get("user-agent") ?? "";
+  const isApi = pathname.startsWith("/api/");
+  const isDashboard = pathname.startsWith("/third-audience");
+  const isAsset = pathname.startsWith("/_next") || pathname.includes(".");
+  if (isBotUserAgent(ua) && !isApi && !isDashboard && !isAsset) {
+    const trackUrl = req.nextUrl.clone();
+    trackUrl.pathname = "/api/third-audience/track";
+    trackUrl.searchParams.set("_url", pathname);
+    fetch(trackUrl.toString(), {
+      method: "GET",
+      headers: {
+        "user-agent": ua,
+        "x-forwarded-for": req.headers.get("x-forwarded-for") ?? "",
+        "x-real-ip": req.headers.get("x-real-ip") ?? "",
+        "referer": req.headers.get("referer") ?? "",
+        "x-ta-original-url": pathname
+      }
+    }).catch(() => {
+    });
   }
   return null;
 }

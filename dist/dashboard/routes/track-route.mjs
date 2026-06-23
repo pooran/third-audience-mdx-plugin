@@ -1,54 +1,135 @@
-"use strict";
-var __create = Object.create;
-var __defProp = Object.defineProperty;
-var __getOwnPropDesc = Object.getOwnPropertyDescriptor;
-var __getOwnPropNames = Object.getOwnPropertyNames;
-var __getProtoOf = Object.getPrototypeOf;
-var __hasOwnProp = Object.prototype.hasOwnProperty;
-var __export = (target, all) => {
-  for (var name in all)
-    __defProp(target, name, { get: all[name], enumerable: true });
-};
-var __copyProps = (to, from, except, desc) => {
-  if (from && typeof from === "object" || typeof from === "function") {
-    for (let key of __getOwnPropNames(from))
-      if (!__hasOwnProp.call(to, key) && key !== except)
-        __defProp(to, key, { get: () => from[key], enumerable: !(desc = __getOwnPropDesc(from, key)) || desc.enumerable });
-  }
-  return to;
-};
-var __toESM = (mod, isNodeMode, target) => (target = mod != null ? __create(__getProtoOf(mod)) : {}, __copyProps(
-  // If the importer is in node compatibility mode or this is not an ESM
-  // file that has been converted to a CommonJS file using a Babel-
-  // compatible transform (i.e. "__esModule" has not been set), then set
-  // "default" to the CommonJS "module.exports" for node compatibility.
-  isNodeMode || !mod || !mod.__esModule ? __defProp(target, "default", { value: mod, enumerable: true }) : target,
-  mod
-));
-var __toCommonJS = (mod) => __copyProps(__defProp({}, "__esModule", { value: true }), mod);
-
-// src/dashboard/auth.ts
-var auth_exports = {};
-__export(auth_exports, {
-  checkApiAuth: () => checkApiAuth,
-  checkDashboardAuth: () => checkDashboardAuth,
-  unauthorizedResponse: () => unauthorizedResponse
+var __require = /* @__PURE__ */ ((x) => typeof require !== "undefined" ? require : typeof Proxy !== "undefined" ? new Proxy(x, {
+  get: (a, b) => (typeof require !== "undefined" ? require : a)[b]
+}) : x)(function(x) {
+  if (typeof require !== "undefined") return require.apply(this, arguments);
+  throw Error('Dynamic require of "' + x + '" is not supported');
 });
-module.exports = __toCommonJS(auth_exports);
-var import_server = require("next/server");
 
-// src/dashboard/admin-store.ts
-var import_crypto = __toESM(require("crypto"));
+// src/dashboard/routes/track-route.ts
+import { NextResponse } from "next/server";
+
+// src/detection/known-patterns.ts
+var KNOWN_BOTS = [
+  // AI Crawlers
+  { name: "ClaudeBot", category: "ai_crawler", patterns: [/claudebot/i, /claude-web/i] },
+  { name: "GPTBot", category: "ai_crawler", patterns: [/gptbot/i] },
+  { name: "ChatGPT-User", category: "ai_crawler", patterns: [/chatgpt-user/i] },
+  { name: "PerplexityBot", category: "ai_crawler", patterns: [/perplexitybot/i] },
+  { name: "Googlebot-AI", category: "ai_crawler", patterns: [/google-extended/i, /googleother/i] },
+  { name: "FacebookBot", category: "ai_crawler", patterns: [/facebookbot/i] },
+  { name: "Applebot-Extended", category: "ai_crawler", patterns: [/applebot-extended/i] },
+  { name: "YouBot", category: "ai_crawler", patterns: [/youbot/i] },
+  { name: "CCBot", category: "ai_crawler", patterns: [/ccbot/i] },
+  { name: "CohereCrawler", category: "ai_crawler", patterns: [/cohere-ai/i] },
+  { name: "AI2Bot", category: "ai_crawler", patterns: [/ai2bot/i] },
+  { name: "Bytespider", category: "ai_crawler", patterns: [/bytespider/i] },
+  { name: "Diffbot", category: "ai_crawler", patterns: [/diffbot/i] },
+  // Search Engines
+  { name: "Googlebot", category: "search_engine", patterns: [/googlebot/i] },
+  { name: "Bingbot", category: "search_engine", patterns: [/bingbot/i, /msnbot/i] },
+  { name: "DuckDuckBot", category: "search_engine", patterns: [/duckduckbot/i] },
+  { name: "Baiduspider", category: "search_engine", patterns: [/baiduspider/i] },
+  { name: "YandexBot", category: "search_engine", patterns: [/yandexbot/i] },
+  { name: "Sogou", category: "search_engine", patterns: [/sogou/i] },
+  { name: "Exabot", category: "search_engine", patterns: [/exabot/i] },
+  { name: "ia_archiver", category: "search_engine", patterns: [/ia_archiver/i] }
+];
+
+// src/detection/bot-detection-pipeline.ts
+function detectBot(input) {
+  const ua = input.userAgent ?? "";
+  for (const bot of KNOWN_BOTS) {
+    for (const pattern of bot.patterns) {
+      if (pattern.test(ua)) {
+        return {
+          isBot: true,
+          botName: bot.name,
+          confidence: "high",
+          detectionMethod: "known_pattern",
+          category: bot.category,
+          rawUserAgent: ua
+        };
+      }
+    }
+  }
+  const heuristicResult = checkHeuristics(ua, input.headers ?? {});
+  if (heuristicResult) return { ...heuristicResult, rawUserAgent: ua };
+  if (looksLikeBotUa(ua)) {
+    return {
+      isBot: true,
+      botName: null,
+      confidence: "low",
+      detectionMethod: "auto_learned",
+      category: "unknown_bot",
+      rawUserAgent: ua
+    };
+  }
+  return {
+    isBot: false,
+    botName: null,
+    confidence: "high",
+    detectionMethod: "none",
+    category: "human",
+    rawUserAgent: ua
+  };
+}
+function checkHeuristics(ua, headers) {
+  if (/headlesschrome/i.test(ua)) {
+    return { isBot: true, botName: "HeadlessChrome", confidence: "medium", detectionMethod: "heuristic", category: "unknown_bot" };
+  }
+  if (/phantomjs/i.test(ua)) {
+    return { isBot: true, botName: "PhantomJS", confidence: "high", detectionMethod: "heuristic", category: "unknown_bot" };
+  }
+  if (/selenium/i.test(ua)) {
+    return { isBot: true, botName: "Selenium", confidence: "high", detectionMethod: "heuristic", category: "unknown_bot" };
+  }
+  if (ua.trim().length < 10) {
+    return { isBot: true, botName: null, confidence: "low", detectionMethod: "heuristic", category: "unknown_bot" };
+  }
+  const hasAcceptLang = !!headers["accept-language"];
+  const hasAcceptEncoding = !!headers["accept-encoding"];
+  const claimsBrowser = /chrome|firefox|safari|edge|opera|gecko|applewebkit/i.test(ua);
+  if (!hasAcceptLang && !hasAcceptEncoding && !claimsBrowser) {
+    return { isBot: true, botName: null, confidence: "low", detectionMethod: "heuristic", category: "unknown_bot" };
+  }
+  return null;
+}
+function looksLikeBotUa(ua) {
+  return /bot|crawler|spider|scraper|fetch|http|python|curl|java|ruby|go-http|node/i.test(ua) && !/chrome|firefox|safari|edge|opera/i.test(ua);
+}
+
+// src/analytics/geolocation.ts
+var geoip = null;
+function loadGeoip() {
+  if (geoip) return geoip;
+  try {
+    geoip = __require("geoip-lite");
+  } catch {
+    geoip = null;
+  }
+  return geoip;
+}
+function getCountry(ip) {
+  if (!ip || ip === "unknown" || ip === "127.0.0.1" || ip.startsWith("::")) return null;
+  const geo = loadGeoip();
+  if (!geo) return null;
+  try {
+    const result = geo.lookup(ip);
+    return result?.country ?? null;
+  } catch {
+    return null;
+  }
+}
 
 // src/storage/postgres-store.ts
-var import_pg = require("pg");
+import { Client } from "pg";
 var _client = null;
 async function getClient() {
   if (_client) return _client;
   const url = process.env.TA_STORAGE_URL;
   if (!url) throw new Error("TA_STORAGE_URL is required for postgres/supabase storage");
   const sslUrl = url.replace(/[?&]sslmode=[^&]*/g, "");
-  _client = new import_pg.Client({ connectionString: sslUrl, ssl: { rejectUnauthorized: false } });
+  _client = new Client({ connectionString: sslUrl, ssl: { rejectUnauthorized: false } });
   await _client.connect();
   await migrate(_client);
   return _client;
@@ -222,77 +303,52 @@ function getStore() {
   return _store;
 }
 
-// src/dashboard/admin-store.ts
-var CIPHER = "aes-256-gcm";
-function getEncryptionKey() {
-  const secret = process.env.THIRD_AUDIENCE_SECRET ?? "ta-fallback-key-change-me";
-  return import_crypto.default.createHash("sha256").update(secret).digest();
-}
-function decryptApiKey(encoded) {
-  try {
-    const iv = Buffer.from(encoded.slice(0, 24), "hex");
-    const tag = Buffer.from(encoded.slice(24, 56), "hex");
-    const encrypted = Buffer.from(encoded.slice(56), "hex");
-    const key = getEncryptionKey();
-    const decipher = import_crypto.default.createDecipheriv(CIPHER, key, iv);
-    decipher.setAuthTag(tag);
-    return decipher.update(encrypted) + decipher.final("utf8");
-  } catch {
-    return null;
-  }
-}
-async function getApiKey() {
-  const record = await getStore().getAdmin();
-  if (!record?.apiKey) return null;
-  return decryptApiKey(record.apiKey);
-}
-async function verifyApiKey(key) {
-  const stored = await getApiKey();
-  if (!stored) return false;
-  if (key.length !== stored.length) return false;
-  return import_crypto.default.timingSafeEqual(Buffer.from(key), Buffer.from(stored));
-}
-function verifySession(token) {
-  const lastDot = token.lastIndexOf(".");
-  if (lastDot === -1) return false;
-  const payload = token.slice(0, lastDot);
-  const sig = token.slice(lastDot + 1);
-  const expected = import_crypto.default.createHmac("sha256", process.env.THIRD_AUDIENCE_SECRET ?? "ta-salt").update(payload).digest("hex");
-  if (sig.length !== expected.length) return false;
-  return import_crypto.default.timingSafeEqual(Buffer.from(sig, "hex"), Buffer.from(expected, "hex"));
-}
-
-// src/dashboard/auth.ts
-var SESSION_COOKIE = "ta_session";
-async function checkApiAuth(req) {
-  const apiKeyHeader = req.headers.get("x-ta-api-key");
-  if (apiKeyHeader) return verifyApiKey(apiKeyHeader);
-  const auth = req.headers.get("authorization") ?? "";
-  if (auth.startsWith("Bearer ")) {
-    return verifyApiKey(auth.slice(7));
-  }
-  const session = req.cookies.get(SESSION_COOKIE)?.value;
-  if (session) return verifySession(session);
-  return false;
-}
-function checkDashboardAuth(req) {
-  const session = req.cookies.get(SESSION_COOKIE)?.value;
-  if (!session) return false;
-  return verifySession(session);
-}
-function unauthorizedResponse() {
-  return import_server.NextResponse.json(
-    { error: "Unauthorized. Provide X-TA-Api-Key header or a valid session cookie." },
-    {
-      status: 401,
-      headers: { "WWW-Authenticate": 'Bearer realm="Third Audience API"' }
+// src/analytics/visit-tracker.ts
+var _VisitTracker = class _VisitTracker {
+  static getInstance() {
+    if (!_VisitTracker.instance) {
+      _VisitTracker.instance = new _VisitTracker();
     }
-  );
+    return _VisitTracker.instance;
+  }
+  record(req, meta = {}) {
+    const ua = req.headers.get("user-agent") ?? "";
+    const headers = {};
+    req.headers.forEach((value, key) => {
+      headers[key] = value;
+    });
+    const result = detectBot({ userAgent: ua, headers });
+    if (!result.isBot) return;
+    const ip = req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ?? req.headers.get("x-real-ip") ?? "unknown";
+    const record = {
+      timestamp: (/* @__PURE__ */ new Date()).toISOString(),
+      bot_name: result.botName,
+      bot_category: result.category,
+      detection_method: result.detectionMethod,
+      confidence: result.confidence,
+      url: meta.url ?? req.nextUrl.pathname,
+      ip,
+      country: getCountry(ip),
+      user_agent: ua,
+      referer: req.headers.get("referer"),
+      response_ms: meta.responseMs ?? null,
+      cache_hit: meta.cacheHit ?? false,
+      content_length: meta.contentLength ?? null
+    };
+    getStore().appendVisit(record).catch(() => {
+    });
+  }
+};
+_VisitTracker.instance = null;
+var VisitTracker = _VisitTracker;
+
+// src/dashboard/routes/track-route.ts
+async function GET(req) {
+  const originalUrl = req.headers.get("x-ta-original-url") ?? void 0;
+  VisitTracker.getInstance().record(req, { url: originalUrl });
+  return new NextResponse(null, { status: 204 });
 }
-// Annotate the CommonJS export names for ESM import in node:
-0 && (module.exports = {
-  checkApiAuth,
-  checkDashboardAuth,
-  unauthorizedResponse
-});
-//# sourceMappingURL=auth.js.map
+export {
+  GET
+};
+//# sourceMappingURL=track-route.mjs.map
