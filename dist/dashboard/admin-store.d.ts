@@ -57,6 +57,42 @@ interface Store {
     deleteCache(keyPrefix: string): Promise<void>;
     getKv(key: string): Promise<string | null>;
     setKv(key: string, value: string): Promise<void>;
+    listCacheKeys(opts: {
+        search?: string;
+        limit: number;
+        offset: number;
+    }): Promise<Array<CacheEntry & {
+        key: string;
+    }>>;
+    countCacheKeys(search?: string): Promise<number>;
+    deleteCacheKey(key: string): Promise<void>;
+    clearExpiredCache(): Promise<number>;
+    getCompetitors(): Promise<CompetitorRecord[]>;
+    saveCompetitors(list: CompetitorRecord[]): Promise<void>;
+    appendBenchmark(record: BenchmarkRecord): Promise<void>;
+    getBenchmarks(filters: BenchmarkFilters): Promise<BenchmarkRecord[]>;
+    countBenchmarks(filters: BenchmarkFilters): Promise<number>;
+    deleteBenchmark(id: number): Promise<void>;
+    clearBenchmarks(): Promise<void>;
+}
+interface CompetitorRecord {
+    url: string;
+    name: string;
+}
+interface BenchmarkRecord {
+    id?: number;
+    competitor_url: string;
+    competitor_name: string;
+    test_prompt: string;
+    ai_platform: string;
+    cited_rank: number | null;
+    test_date: string;
+    test_notes: string;
+}
+interface BenchmarkFilters {
+    competitor_url?: string;
+    ai_platform?: string;
+    sinceDate?: string;
 }
 
 declare function getStore(): Store;

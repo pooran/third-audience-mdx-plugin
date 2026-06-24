@@ -1,6 +1,6 @@
 {
   "name": "third-audience-mdx",
-  "version": "1.2.1",
+  "version": "1.3.0",
   "description": "Serve AI-optimized Markdown to LLM crawlers from MDX content sites. Track bot visits, citations, and AI discoverability.",
   "main": "dist/index.js",
   "module": "dist/index.mjs",
@@ -116,6 +116,31 @@
       "import": "./dist/dashboard/routes/digest-route.mjs",
       "require": "./dist/dashboard/routes/digest-route.js",
       "types": "./dist/dashboard/routes/digest-route.d.ts"
+    },
+    "./routes/benchmark": {
+      "import": "./dist/dashboard/routes/benchmark-route.mjs",
+      "require": "./dist/dashboard/routes/benchmark-route.js",
+      "types": "./dist/dashboard/routes/benchmark-route.d.ts"
+    },
+    "./routes/cache-browser": {
+      "import": "./dist/dashboard/routes/cache-browser-route.mjs",
+      "require": "./dist/dashboard/routes/cache-browser-route.js",
+      "types": "./dist/dashboard/routes/cache-browser-route.d.ts"
+    },
+    "./dashboard/ui/pages/CompetitorBenchmarkingPage": {
+      "import": "./dist/dashboard/ui/pages/CompetitorBenchmarkingPage.mjs",
+      "require": "./dist/dashboard/ui/pages/CompetitorBenchmarkingPage.js",
+      "types": "./dist/dashboard/ui/pages/CompetitorBenchmarkingPage.d.ts"
+    },
+    "./dashboard/ui/pages/CacheBrowserPage": {
+      "import": "./dist/dashboard/ui/pages/CacheBrowserPage.mjs",
+      "require": "./dist/dashboard/ui/pages/CacheBrowserPage.js",
+      "types": "./dist/dashboard/ui/pages/CacheBrowserPage.d.ts"
+    },
+    "./dashboard/ui/pages/EmailDigestPage": {
+      "import": "./dist/dashboard/ui/pages/EmailDigestPage.mjs",
+      "require": "./dist/dashboard/ui/pages/EmailDigestPage.js",
+      "types": "./dist/dashboard/ui/pages/EmailDigestPage.d.ts"
     }
   },
   "bin": {

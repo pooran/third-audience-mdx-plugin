@@ -1,5 +1,5 @@
 import { Client } from 'pg'
-import type { Store, AdminRecord, BotsConfig, CacheEntry } from './store.js'
+import type { Store, AdminRecord, BotsConfig, CacheEntry, CompetitorRecord, BenchmarkRecord, BenchmarkFilters } from './store.js'
 import type { VisitRecord } from '../analytics/visit-tracker.js'
 import type { CitationRecord } from '../citations/citation-tracker.js'
 
@@ -72,6 +72,23 @@ async function migrate(client: Client): Promise<void> {
       key   TEXT PRIMARY KEY,
       value TEXT NOT NULL
     );
+    CREATE TABLE IF NOT EXISTS ta_competitors (
+      id   SERIAL PRIMARY KEY,
+      data TEXT NOT NULL
+    );
+    CREATE TABLE IF NOT EXISTS ta_benchmarks (
+      id               SERIAL PRIMARY KEY,
+      competitor_url   TEXT    NOT NULL,
+      competitor_name  TEXT    NOT NULL,
+      test_prompt      TEXT    NOT NULL,
+      ai_platform      TEXT    NOT NULL,
+      cited_rank       SMALLINT,
+      test_date        TEXT    NOT NULL,
+      test_notes       TEXT    NOT NULL DEFAULT ''
+    );
+    CREATE INDEX IF NOT EXISTS ta_benchmarks_url_idx      ON ta_benchmarks (competitor_url);
+    CREATE INDEX IF NOT EXISTS ta_benchmarks_platform_idx ON ta_benchmarks (ai_platform);
+    CREATE INDEX IF NOT EXISTS ta_benchmarks_date_idx     ON ta_benchmarks (test_date);
   `)
 }
 
@@ -199,5 +216,107 @@ export class PostgresStore implements Store {
 
   async setKv(key: string, value: string): Promise<void> {
     await this.q('INSERT INTO ta_kv (key, value) VALUES ($1, $2) ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value', [key, value])
+  }
+
+  // ── Cache browser ──────────────────────────────────────────────────────────
+
+  async listCacheKeys(opts: { search?: string; limit: number; offset: number }): Promise<Array<CacheEntry & { key: string }>> {
+    const params: unknown[] = [opts.limit, opts.offset]
+    const where = opts.search ? `WHERE key ILIKE $3` : ''
+    if (opts.search) params.push(`%${opts.search}%`)
+    const { rows } = await this.q(
+      `SELECT key, content, etag, cached_at, ttl FROM ta_cache ${where} ORDER BY cached_at DESC LIMIT $1 OFFSET $2`,
+      params,
+    )
+    return rows.map(r => ({ key: r.key, content: r.content, etag: r.etag, cachedAt: Number(r.cached_at), ttl: r.ttl }))
+  }
+
+  async countCacheKeys(search?: string): Promise<number> {
+    const where = search ? `WHERE key ILIKE $1` : ''
+    const params = search ? [`%${search}%`] : []
+    const { rows } = await this.q(`SELECT COUNT(*)::int AS n FROM ta_cache ${where}`, params)
+    return rows[0]?.n ?? 0
+  }
+
+  async deleteCacheKey(key: string): Promise<void> {
+    await this.q('DELETE FROM ta_cache WHERE key = $1', [key])
+  }
+
+  async clearExpiredCache(): Promise<number> {
+    const now = Date.now()
+    const { rowCount } = await this.q(
+      'DELETE FROM ta_cache WHERE (cached_at + ttl * 1000) < $1',
+      [now],
+    )
+    return rowCount ?? 0
+  }
+
+  // ── Competitor benchmarking ────────────────────────────────────────────────
+
+  async getCompetitors(): Promise<CompetitorRecord[]> {
+    const { rows } = await this.q('SELECT data FROM ta_competitors WHERE id = 1')
+    if (!rows[0]) return []
+    try { return JSON.parse(rows[0].data) as CompetitorRecord[] } catch { return [] }
+  }
+
+  async saveCompetitors(list: CompetitorRecord[]): Promise<void> {
+    await this.q(`
+      INSERT INTO ta_competitors (id, data) VALUES (1, $1)
+      ON CONFLICT (id) DO UPDATE SET data = EXCLUDED.data
+    `, [JSON.stringify(list)])
+  }
+
+  async appendBenchmark(r: BenchmarkRecord): Promise<void> {
+    await this.q(`
+      INSERT INTO ta_benchmarks (competitor_url, competitor_name, test_prompt, ai_platform, cited_rank, test_date, test_notes)
+      VALUES ($1,$2,$3,$4,$5,$6,$7)
+    `, [r.competitor_url, r.competitor_name, r.test_prompt, r.ai_platform, r.cited_rank ?? null, r.test_date, r.test_notes ?? ''])
+  }
+
+  async getBenchmarks(filters: BenchmarkFilters): Promise<BenchmarkRecord[]> {
+    const { where, params } = buildBenchmarkWhere(filters)
+    const { rows } = await this.q(
+      `SELECT * FROM ta_benchmarks ${where} ORDER BY test_date DESC, id DESC`,
+      params,
+    )
+    return rows.map(rowToBenchmark)
+  }
+
+  async countBenchmarks(filters: BenchmarkFilters): Promise<number> {
+    const { where, params } = buildBenchmarkWhere(filters)
+    const { rows } = await this.q(`SELECT COUNT(*)::int AS n FROM ta_benchmarks ${where}`, params)
+    return rows[0]?.n ?? 0
+  }
+
+  async deleteBenchmark(id: number): Promise<void> {
+    await this.q('DELETE FROM ta_benchmarks WHERE id = $1', [id])
+  }
+
+  async clearBenchmarks(): Promise<void> {
+    await this.q('DELETE FROM ta_benchmarks')
+  }
+}
+
+// ── helpers ────────────────────────────────────────────────────────────────
+
+function buildBenchmarkWhere(f: BenchmarkFilters): { where: string; params: unknown[] } {
+  const clauses: string[] = []
+  const params: unknown[] = []
+  if (f.competitor_url) { params.push(f.competitor_url); clauses.push(`competitor_url = $${params.length}`) }
+  if (f.ai_platform)    { params.push(f.ai_platform);    clauses.push(`ai_platform = $${params.length}`) }
+  if (f.sinceDate)      { params.push(f.sinceDate);      clauses.push(`test_date >= $${params.length}`) }
+  return { where: clauses.length ? 'WHERE ' + clauses.join(' AND ') : '', params }
+}
+
+function rowToBenchmark(r: Record<string, unknown>): BenchmarkRecord {
+  return {
+    id: r.id as number,
+    competitor_url: r.competitor_url as string,
+    competitor_name: r.competitor_name as string,
+    test_prompt: r.test_prompt as string,
+    ai_platform: r.ai_platform as string,
+    cited_rank: r.cited_rank as number | null,
+    test_date: r.test_date as string,
+    test_notes: r.test_notes as string,
   }
 }

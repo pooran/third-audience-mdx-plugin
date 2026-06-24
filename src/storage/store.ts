@@ -48,4 +48,41 @@ export interface Store {
   // Key-value store for internal state (digest timestamps, rate-limit flags)
   getKv(key: string): Promise<string | null>
   setKv(key: string, value: string): Promise<void>
+
+  // Cache browser
+  listCacheKeys(opts: { search?: string; limit: number; offset: number }): Promise<Array<CacheEntry & { key: string }>>
+  countCacheKeys(search?: string): Promise<number>
+  deleteCacheKey(key: string): Promise<void>
+  clearExpiredCache(): Promise<number>
+
+  // Competitor benchmarking
+  getCompetitors(): Promise<CompetitorRecord[]>
+  saveCompetitors(list: CompetitorRecord[]): Promise<void>
+  appendBenchmark(record: BenchmarkRecord): Promise<void>
+  getBenchmarks(filters: BenchmarkFilters): Promise<BenchmarkRecord[]>
+  countBenchmarks(filters: BenchmarkFilters): Promise<number>
+  deleteBenchmark(id: number): Promise<void>
+  clearBenchmarks(): Promise<void>
+}
+
+export interface CompetitorRecord {
+  url: string
+  name: string
+}
+
+export interface BenchmarkRecord {
+  id?: number
+  competitor_url: string
+  competitor_name: string
+  test_prompt: string
+  ai_platform: string
+  cited_rank: number | null
+  test_date: string
+  test_notes: string
+}
+
+export interface BenchmarkFilters {
+  competitor_url?: string
+  ai_platform?: string
+  sinceDate?: string
 }
