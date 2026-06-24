@@ -29,13 +29,31 @@ interface ThirdAudienceConfig {
     /** Secret for dashboard access (HTTP Basic or bearer). Required when dashboard: true */
     dashboardSecret?: string;
     notifications?: {
-        email?: {
-            smtp: string;
-            to: string;
-            from?: string;
+        /**
+         * SMTP config for transactional email.
+         * Use Brevo (smtp-relay.brevo.com:587) or any SMTP provider.
+         */
+        smtp?: {
+            host: string;
+            port?: number;
+            secure?: boolean;
+            user: string;
+            pass: string;
         };
-        slack?: {
-            webhookUrl: string;
+        /** Brevo API key — alternative to raw SMTP, uses Brevo transactional API */
+        brevoApiKey?: string;
+        /** Recipient email address(es) for all alerts and digests */
+        to?: string | string[];
+        /** Sender name and address shown in emails */
+        from?: string;
+        /** Alert triggers — all enabled by default when smtp/brevo is configured */
+        alerts?: {
+            firstBotVisit?: boolean;
+            firstCitation?: boolean;
+            newPlatform?: boolean;
+            citationSpike?: boolean;
+            dailyDigest?: boolean;
+            weeklyDigest?: boolean;
         };
     };
     bots?: {

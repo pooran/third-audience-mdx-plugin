@@ -68,6 +68,10 @@ async function migrate(client: Client): Promise<void> {
       cached_at BIGINT  NOT NULL,
       ttl       INTEGER NOT NULL
     );
+    CREATE TABLE IF NOT EXISTS ta_kv (
+      key   TEXT PRIMARY KEY,
+      value TEXT NOT NULL
+    );
   `)
 }
 
@@ -186,5 +190,14 @@ export class PostgresStore implements Store {
 
   async deleteCache(keyPrefix: string): Promise<void> {
     await this.q('DELETE FROM ta_cache WHERE key LIKE $1', [keyPrefix + '%'])
+  }
+
+  async getKv(key: string): Promise<string | null> {
+    const { rows } = await this.q('SELECT value FROM ta_kv WHERE key = $1', [key])
+    return rows[0]?.value ?? null
+  }
+
+  async setKv(key: string, value: string): Promise<void> {
+    await this.q('INSERT INTO ta_kv (key, value) VALUES ($1, $2) ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value', [key, value])
   }
 }

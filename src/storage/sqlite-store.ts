@@ -62,6 +62,10 @@ function migrate(db: Database.Database): void {
       cached_at INTEGER NOT NULL,
       ttl       INTEGER NOT NULL
     );
+    CREATE TABLE IF NOT EXISTS kv (
+      key   TEXT PRIMARY KEY,
+      value TEXT NOT NULL
+    );
   `)
 }
 
@@ -193,5 +197,14 @@ export class SqliteStore implements Store {
 
   async deleteCache(keyPrefix: string): Promise<void> {
     this.db.prepare('DELETE FROM cache WHERE key LIKE ?').run(keyPrefix + '%')
+  }
+
+  async getKv(key: string): Promise<string | null> {
+    const row = this.db.prepare('SELECT value FROM kv WHERE key = ?').get(key) as { value: string } | undefined
+    return row?.value ?? null
+  }
+
+  async setKv(key: string, value: string): Promise<void> {
+    this.db.prepare('INSERT INTO kv (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value').run(key, value)
   }
 }

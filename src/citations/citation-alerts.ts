@@ -1,4 +1,5 @@
 import { getStore } from '../storage/get-store.js'
+import { notifyCitationAlerts } from '../notifications/alert-sender.js'
 import type { CitationRecord } from './citation-tracker.js'
 
 export interface CitationAlert {
@@ -12,8 +13,9 @@ export interface CitationAlert {
 export class CitationAlerts {
   async check(newRecord: CitationRecord): Promise<CitationAlert[]> {
     const alerts: CitationAlert[] = []
+    const store = getStore()
 
-    const allRecords = await getStore().getAllCitations()
+    const allRecords = await store.getAllCitations()
     const platformHistory = allRecords.filter(r => r.platform === newRecord.platform)
 
     if (platformHistory.length === 1) {
@@ -27,7 +29,7 @@ export class CitationAlerts {
     }
 
     const since30d = new Date(Date.now() - 30 * 24 * 3_600_000).toISOString()
-    const recent30d = await getStore().getCitations(since30d)
+    const recent30d = await store.getCitations(since30d)
     const recentPlatforms = new Set(recent30d.map(r => r.platform))
     if (!recentPlatforms.has(newRecord.platform) && platformHistory.length > 1) {
       alerts.push({
@@ -39,7 +41,7 @@ export class CitationAlerts {
     }
 
     const since24h = new Date(Date.now() - 24 * 3_600_000).toISOString()
-    const history24h = await getStore().getCitations(since24h)
+    const history24h = await store.getCitations(since24h)
     const hourly = history24h.filter(r => r.platform === newRecord.platform)
     const baseline = hourly.length > 0 ? hourly.length / 24 : 0
     const lastHourCount = hourly.filter(r =>
@@ -54,6 +56,9 @@ export class CitationAlerts {
         timestamp: newRecord.timestamp,
       })
     }
+
+    // Fire email notifications async — never block the request path
+    notifyCitationAlerts(newRecord).catch(() => {})
 
     return alerts
   }

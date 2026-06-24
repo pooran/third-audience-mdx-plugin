@@ -44,4 +44,8 @@ export interface Store {
   getCache(key: string): Promise<CacheEntry | null>
   setCache(key: string, entry: CacheEntry): Promise<void>
   deleteCache(keyPrefix: string): Promise<void>
+
+  // Key-value store for internal state (digest timestamps, rate-limit flags)
+  getKv(key: string): Promise<string | null>
+  setKv(key: string, value: string): Promise<void>
 }

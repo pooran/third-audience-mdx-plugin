@@ -55,6 +55,8 @@ interface Store {
     getCache(key: string): Promise<CacheEntry | null>;
     setCache(key: string, entry: CacheEntry): Promise<void>;
     deleteCache(keyPrefix: string): Promise<void>;
+    getKv(key: string): Promise<string | null>;
+    setKv(key: string, value: string): Promise<void>;
 }
 
 declare function getStore(): Store;
