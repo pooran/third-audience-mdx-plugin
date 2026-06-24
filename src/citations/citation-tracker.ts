@@ -154,6 +154,7 @@ const AI_PLATFORMS: Array<{
 export function detectAiPlatform(
   referer: string,
   utmSource?: string | null,
+  landingParams?: URLSearchParams | null,
 ): { platform: string; query: string | null } | null {
   // ChatGPT UTM detection (used since Jun 2025 when referrer is absent)
   if (!referer && utmSource && /chatgpt/i.test(utmSource)) {
@@ -162,6 +163,14 @@ export function detectAiPlatform(
   // Claude UTM detection (Claude often strips referrer)
   if (!referer && utmSource && /claude|anthropic/i.test(utmSource)) {
     return { platform: 'Claude', query: null }
+  }
+
+  // Google AI Overview: srsltid or udm=14 on landing URL with google referrer (or no referrer)
+  if (landingParams) {
+    const fromGoogle = /google\./i.test(referer) || !referer
+    if (fromGoogle && (landingParams.has('srsltid') || landingParams.get('udm') === '14')) {
+      return { platform: 'Google AI Overview', query: landingParams.get('q') }
+    }
   }
 
   if (!referer) return null
@@ -182,7 +191,7 @@ export class CitationTracker {
   record(req: NextRequest): CitationRecord | null {
     const referer = req.headers.get('referer') ?? ''
     const utmSource = req.nextUrl.searchParams.get('utm_source')
-    const detection = detectAiPlatform(referer, utmSource)
+    const detection = detectAiPlatform(referer, utmSource, req.nextUrl.searchParams)
     if (!detection) return null
 
     // Skip browser prefetch — Chrome sends SEC-Fetch-Purpose: prefetch on visible links

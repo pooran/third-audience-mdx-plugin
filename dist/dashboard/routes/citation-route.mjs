@@ -329,12 +329,18 @@ var AI_PLATFORMS = [
     extractQuery: (url) => url.searchParams.get("q")
   }
 ];
-function detectAiPlatform(referer, utmSource) {
+function detectAiPlatform(referer, utmSource, landingParams) {
   if (!referer && utmSource && /chatgpt/i.test(utmSource)) {
     return { platform: "ChatGPT", query: null };
   }
   if (!referer && utmSource && /claude|anthropic/i.test(utmSource)) {
     return { platform: "Claude", query: null };
+  }
+  if (landingParams) {
+    const fromGoogle = /google\./i.test(referer) || !referer;
+    if (fromGoogle && (landingParams.has("srsltid") || landingParams.get("udm") === "14")) {
+      return { platform: "Google AI Overview", query: landingParams.get("q") };
+    }
   }
   if (!referer) return null;
   let url;
@@ -355,7 +361,7 @@ var CitationTracker = class {
   record(req) {
     const referer = req.headers.get("referer") ?? "";
     const utmSource = req.nextUrl.searchParams.get("utm_source");
-    const detection = detectAiPlatform(referer, utmSource);
+    const detection = detectAiPlatform(referer, utmSource, req.nextUrl.searchParams);
     if (!detection) return null;
     if (req.headers.get("sec-fetch-purpose") === "prefetch") return null;
     const ip = req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ?? req.headers.get("x-real-ip") ?? "client";
