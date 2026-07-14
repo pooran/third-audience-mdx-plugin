@@ -10,6 +10,9 @@ composer.json
 composer.lock
 phpunit.xml
 
+# WordPress reference plugin (separate nested git repo, used only for parity checks)
+reference/
+
 # WordPress docs
 ABOUT.md
 AUTO-DEPLOYMENT.md
