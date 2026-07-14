@@ -165,18 +165,19 @@ export function detectAiPlatform(
     return { platform: 'Claude', query: null }
   }
 
-  // Google AI Overview: srsltid or udm=14 on landing URL with google referrer (or no referrer)
-  if (landingParams) {
-    const fromGoogle = /google\./i.test(referer) || !referer
-    if (fromGoogle && (landingParams.has('srsltid') || landingParams.get('udm') === '14')) {
-      return { platform: 'Google AI Overview', query: landingParams.get('q') }
-    }
-  }
-
   if (!referer) return null
 
   let url: URL
   try { url = new URL(referer) } catch { return null }
+
+  // Google AI Mode: udm=50 ONLY (on referer query or landing params) with google referrer.
+  // srsltid is Merchant Center shopping click-tracking, not an AI signal — dropped.
+  if (landingParams) {
+    const fromGoogle = /google\./i.test(referer) || !referer
+    if (fromGoogle && (landingParams.get('udm') === '50' || url.searchParams.get('udm') === '50')) {
+      return { platform: 'Google AI Mode', query: landingParams.get('q') }
+    }
+  }
 
   for (const p of AI_PLATFORMS) {
     if (p.test(referer, url)) {
@@ -187,11 +188,50 @@ export function detectAiPlatform(
   return null
 }
 
+// Hidden-referrer detection: Claude (Anthropic) and some other AI platforms strip the
+// Referer header, so their clicks arrive with no Referer and no UTM and would
+// otherwise be silently dropped by detectAiPlatform(). A real top-level cross-origin
+// navigation still sends Fetch Metadata request headers, so we use those as a
+// low-confidence fallback signal — ported from the WordPress reference
+// implementation's detect_hidden_referrer() (class-ta-ai-citation-tracker.php).
+// Gated by TA_DETECT_HIDDEN_REFERRER (default on; set to '0' or 'false' to disable),
+// mirroring the reference's ta_detect_hidden_referrer option (default true).
+//
+// NOTE: the reference also gates on is_singular() (only count actual content pages,
+// not the home page/archives/feeds). This npm package's CitationTracker.record() is
+// only ever invoked from route handlers that already represent a specific
+// content-page request (see citation-route.ts / track-route.ts) — there is no
+// archive/listing concept here — so that guard has no equivalent and is deliberately
+// omitted rather than silently dropped.
+function isHiddenReferrerDetectionEnabled(): boolean {
+  const raw = process.env.TA_DETECT_HIDDEN_REFERRER
+  return raw !== '0' && raw !== 'false'
+}
+
+function detectHiddenReferrer(req: NextRequest): { platform: string; query: string | null } | null {
+  if (!isHiddenReferrerDetectionEnabled()) return null
+
+  const site = req.headers.get('sec-fetch-site') ?? ''
+  const mode = req.headers.get('sec-fetch-mode') ?? ''
+  const dest = req.headers.get('sec-fetch-dest') ?? ''
+
+  // Must be a real top-level page navigation that originated on another site.
+  if (site !== 'cross-site' || mode !== 'navigate') return null
+  // When Sec-Fetch-Dest is present it must be a document (not image/script/etc).
+  if (dest !== '' && dest !== 'document') return null
+
+  return { platform: 'Hidden Referrer (Claude)', query: null }
+}
+
 export class CitationTracker {
   record(req: NextRequest): CitationRecord | null {
     const referer = req.headers.get('referer') ?? ''
     const utmSource = req.nextUrl.searchParams.get('utm_source')
+    // detectAiPlatform() already covers UTM-based detection when referer is empty
+    // (ChatGPT/Claude UTM sniffing); if it still found nothing and there's no
+    // referer, fall back to the Fetch Metadata hidden-referrer heuristic.
     const detection = detectAiPlatform(referer, utmSource, req.nextUrl.searchParams)
+      ?? (!referer ? detectHiddenReferrer(req) : null)
     if (!detection) return null
 
     // Skip browser prefetch — Chrome sends SEC-Fetch-Purpose: prefetch on visible links

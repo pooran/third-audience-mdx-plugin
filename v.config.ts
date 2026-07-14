@@ -20,6 +20,7 @@ export default defineConfig({
     'src/dashboard/ui/pages/CompetitorBenchmarkingPage.tsx',
     'src/dashboard/ui/pages/CacheBrowserPage.tsx',
     'src/dashboard/ui/pages/EmailDigestPage.tsx',
+    'src/dashboard/ui/pages/UrlInspectorPage.tsx',
   ],
   format: ['cjs', 'esm'],
   dts: true,

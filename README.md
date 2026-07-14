@@ -14,6 +14,11 @@ Drop-in npm package for Next.js App Router. Tracks bot visits and AI citations. 
 
 ## What's New
 
+### v1.4.0
+- **URL Inspector** — per-URL citation analytics: total citations, platform breakdown, trend chart (hourly/daily), peak activity, day-by-day history with deltas
+- **Google AI Mode detection fix** — now matches `udm=50` only (the correct AI Mode signal); dropped `srsltid`/`udm=14` (srsltid is Merchant Center shopping-tracking, not an AI signal). Platform renamed from "Google AI Overview" to "Google AI Mode"
+- **Claude hidden-referrer detection** — catches citation clicks where Claude strips the Referer header, using `Sec-Fetch-Site`/`Sec-Fetch-Mode`/`Sec-Fetch-Dest` request headers as a heuristic. Gated by `TA_DETECT_HIDDEN_REFERRER` (default on)
+
 ### v1.3.0
 - **Competitor Benchmarking** — add competitors, record manual AI citation test results across all 22 platforms, view citation rates and average rank by competitor and platform
 - **Cache Browser** — paginated view of all cached pages, search/filter, delete individual entries, clear expired, clear all
@@ -45,11 +50,13 @@ Drop-in npm package for Next.js App Router. Tracks bot visits and AI citations. 
 - **Bot detection** — 20+ known AI crawlers (ClaudeBot, GPTBot, PerplexityBot, Gemini, etc.) plus heuristic detection
 - **Bot analytics** — every crawler visit logged to the database
 - **Citation tracking** — 22 AI platforms: server-side referrer + UTM detection + client-side JS beacon
-- **Google AI Overview** — detected via `srsltid` / `udm=14` landing params
+- **Google AI Mode** — detected via `udm=50` (referer query or landing params)
+- **Hidden-referrer detection** — catches Claude clicks that strip the Referer header, via `Sec-Fetch-*` request headers
+- **URL Inspector** — per-URL citation analytics: platform breakdown, trend chart, peak activity, history
 - **Email notifications** — SMTP or Brevo; 5 alert types + daily/weekly digest with HTML charts
 - **Competitor benchmarking** — track AI citation rates for competitors across all 22 platforms
 - **Cache browser** — inspect, search, and manage all cached pages
-- **Dashboard** — React web UI at `/third-audience/` with 9 pages
+- **Dashboard** — React web UI at `/third-audience/` with 10 pages
 - **CLI** — `npx third-audience init/health/export`
 - **JSX stripping** — serves clean Markdown to AI; removes imports, component tags, expressions
 - **Memory cache** — LRU in-memory cache + database-backed disk tier
@@ -158,6 +165,11 @@ export { GET, POST } from 'third-audience-mdx/routes/benchmark'
 export { GET, POST } from 'third-audience-mdx/routes/cache-browser'
 ```
 
+**`app/api/third-audience/url-inspector/route.ts`**
+```ts
+export { GET } from 'third-audience-mdx/routes/url-inspector'
+```
+
 ### 4. Add the dashboard
 
 **`app/third-audience/layout.tsx`**
@@ -234,6 +246,13 @@ export default function Page() { return <CacheBrowserPage /> }
 import { EmailDigestPage } from 'third-audience-mdx/dashboard/ui/pages/EmailDigestPage'
 export const dynamic = 'force-dynamic'
 export default function Page() { return <EmailDigestPage /> }
+```
+
+**`app/third-audience/url-inspector/page.tsx`** — URL Inspector
+```tsx
+import { UrlInspectorPage } from 'third-audience-mdx/dashboard/ui/pages/UrlInspectorPage'
+export const dynamic = 'force-dynamic'
+export default function Page() { return <UrlInspectorPage /> }
 ```
 
 ### 5. Add client-side citation tracker
@@ -348,9 +367,9 @@ TA_NOTIFY_FROM=...       # sender name + address
 
 Server-side referrer detection + client JS beacon covers:
 
-ChatGPT · Perplexity · Claude · Gemini · Copilot · You.com · Phind · Kagi · SearchGPT · Grok · Bing AI · Poe · Character.AI · Mistral · Meta AI · HuggingChat · Brave Leo · DuckDuckGo AI · Liner · Andi · **Google AI Overview** (via `srsltid` / `udm=14`)
+ChatGPT · Perplexity · Claude · Gemini · Copilot · You.com · Phind · Kagi · SearchGPT · Grok · Bing AI · Poe · Character.AI · Mistral · Meta AI · HuggingChat · Brave Leo · DuckDuckGo AI · Liner · Andi · **Google AI Mode** (via `udm=50`)
 
-ChatGPT and Claude are also detected via `utm_source` when they suppress the referrer header.
+ChatGPT and Claude are also detected via `utm_source` when they suppress the referrer header. Claude clicks that strip both the referrer and UTM are additionally caught via `Sec-Fetch-*` request header heuristics (`TA_DETECT_HIDDEN_REFERRER`, default on), recorded as `Hidden Referrer (Claude)`.
 
 ---
 
@@ -368,6 +387,7 @@ ChatGPT and Claude are also detected via `utm_source` when they suppress the ref
 | `GET/POST /api/third-audience/digest` | Trigger digest / check last-sent status |
 | `GET/POST /api/third-audience/benchmark` | Competitor benchmarking CRUD |
 | `GET/POST /api/third-audience/cache-browser` | Cache inspection and management |
+| `GET /api/third-audience/url-inspector` | Per-URL citation analytics |
 
 ---
 

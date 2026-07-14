@@ -1,4 +1,5 @@
 node_modules/
+reference/
 
 data/ta-visits.jsonl
 data/ta-citations.jsonl
@@ -9,3 +10,6 @@ data/ta-admin.json
 
 CLAUDE.md
 WORKLOG.md
+
+# local skill state (not shared across machines)
+.claude/skills/third-parity-check/.last-checked-sha

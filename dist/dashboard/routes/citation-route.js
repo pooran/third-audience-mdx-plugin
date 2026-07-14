@@ -486,18 +486,18 @@ function detectAiPlatform(referer, utmSource, landingParams) {
   if (!referer && utmSource && /claude|anthropic/i.test(utmSource)) {
     return { platform: "Claude", query: null };
   }
-  if (landingParams) {
-    const fromGoogle = /google\./i.test(referer) || !referer;
-    if (fromGoogle && (landingParams.has("srsltid") || landingParams.get("udm") === "14")) {
-      return { platform: "Google AI Overview", query: landingParams.get("q") };
-    }
-  }
   if (!referer) return null;
   let url;
   try {
     url = new URL(referer);
   } catch {
     return null;
+  }
+  if (landingParams) {
+    const fromGoogle = /google\./i.test(referer) || !referer;
+    if (fromGoogle && (landingParams.get("udm") === "50" || url.searchParams.get("udm") === "50")) {
+      return { platform: "Google AI Mode", query: landingParams.get("q") };
+    }
   }
   for (const p of AI_PLATFORMS) {
     if (p.test(referer, url)) {
@@ -507,11 +507,24 @@ function detectAiPlatform(referer, utmSource, landingParams) {
   }
   return null;
 }
+function isHiddenReferrerDetectionEnabled() {
+  const raw = process.env.TA_DETECT_HIDDEN_REFERRER;
+  return raw !== "0" && raw !== "false";
+}
+function detectHiddenReferrer(req) {
+  if (!isHiddenReferrerDetectionEnabled()) return null;
+  const site = req.headers.get("sec-fetch-site") ?? "";
+  const mode = req.headers.get("sec-fetch-mode") ?? "";
+  const dest = req.headers.get("sec-fetch-dest") ?? "";
+  if (site !== "cross-site" || mode !== "navigate") return null;
+  if (dest !== "" && dest !== "document") return null;
+  return { platform: "Hidden Referrer (Claude)", query: null };
+}
 var CitationTracker = class {
   record(req) {
     const referer = req.headers.get("referer") ?? "";
     const utmSource = req.nextUrl.searchParams.get("utm_source");
-    const detection = detectAiPlatform(referer, utmSource, req.nextUrl.searchParams);
+    const detection = detectAiPlatform(referer, utmSource, req.nextUrl.searchParams) ?? (!referer ? detectHiddenReferrer(req) : null);
     if (!detection) return null;
     if (req.headers.get("sec-fetch-purpose") === "prefetch") return null;
     const ip = req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ?? req.headers.get("x-real-ip") ?? "client";
